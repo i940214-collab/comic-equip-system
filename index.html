@@ -118,9 +118,21 @@
                             <div><label class="block text-sm font-bold mb-2">班級或處室</label><select id="borrower-class-eq" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"></select></div>
                             <div><label class="block text-sm font-bold mb-2">借用人姓名 <span class="text-red-500">*</span></label><input type="text" id="borrower-eq" required list="teacher-list" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" oninput="autoFillPhone('eq')"></div>
                             <div><label class="block text-sm font-bold mb-2">聯絡電話 <span class="text-red-500">*</span></label><input type="text" id="borrower-phone-eq" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"></div>
-                            <div><label class="block text-sm font-bold mb-2">設備名稱 <span class="text-red-500">*</span></label><select id="equipment-eq" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"></select></div>
-                            <div><label class="block text-sm font-bold mb-2">借用數量</label><input type="number" id="quantity-eq" min="1" value="1" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"></div>
                             <div><label class="block text-sm font-bold mb-2">預計歸還日期</label><input type="date" id="expectedReturnDate-eq" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"></div>
+                            
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-bold mb-2">借用設備清單 <span class="text-red-500">*</span></label>
+                                <div id="equip-borrow-list" class="space-y-3">
+                                    <div class="flex flex-wrap sm:flex-nowrap gap-2 equip-borrow-item">
+                                        <select required onchange="updateEquipmentDropdowns()" class="flex-1 min-w-[200px] px-4 py-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500 eq-select shadow-sm"></select>
+                                        <div class="flex gap-2 w-full sm:w-auto">
+                                            <input type="number" min="1" value="1" required class="w-24 px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 eq-qty shadow-sm" title="借用數量">
+                                            <button type="button" onclick="removeEquipBorrowRow(this)" class="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg font-bold transition-colors shrink-0 shadow-sm" title="移除此項"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" onclick="addEquipBorrowRow()" class="mt-3 py-2 px-4 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg font-bold flex items-center gap-1.5 transition-colors shadow-sm"><i data-lucide="plus-circle" class="w-4 h-4"></i> 新增其他設備</button>
+                            </div>
                         </div>
                         <div class="flex flex-col sm:flex-row justify-between items-center pt-6 mt-4 border-t border-gray-100 gap-4">
                             <div class="flex items-center gap-2">
@@ -189,7 +201,8 @@
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-xs text-blue-500 font-bold flex items-center gap-1"><i data-lucide="refresh-cw" class="w-3 h-3 animate-spin"></i> 每 3 秒更新</span>
-                        <button onclick="fetchData()" class="bg-white border border-gray-300 hover:bg-gray-100 transition-colors px-4 py-1.5 rounded-md text-sm flex items-center gap-2 font-bold shadow-sm text-gray-700"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新整理</button>
+                        <!-- 💡 修改為呼叫 forceRefreshAll，確保所有設定一起更新 -->
+                        <button onclick="forceRefreshAll(event)" class="bg-white border border-gray-300 hover:bg-gray-100 transition-colors px-4 py-1.5 rounded-md text-sm flex items-center gap-2 font-bold shadow-sm text-gray-700"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新整理</button>
                     </div>
                 </div>
                 <div class="px-6 py-4 bg-gray-50 grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-gray-200">
@@ -262,7 +275,8 @@
                 <div class="flex justify-between items-center mb-6 border-b pb-4">
                     <h2 class="text-xl font-bold flex items-center gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600 w-6 h-6"></i> 管理員控制台</h2>
                     <div class="flex gap-2">
-                        <button onclick="forceSyncSettings()" class="bg-blue-50 hover:bg-blue-100 transition-colors text-blue-700 px-4 py-2 rounded-lg text-sm flex items-center gap-1 font-bold border border-blue-100 shadow-sm"><i data-lucide="cloud-upload" class="w-4 h-4"></i> 強制同步</button>
+                        <!-- 💡 更新：將強制同步改為「重新載入雲端設定」，安全防呆 -->
+                        <button onclick="forceRefreshAll(event)" class="bg-blue-50 hover:bg-blue-100 transition-colors text-blue-700 px-4 py-2 rounded-lg text-sm flex items-center gap-1 font-bold border border-blue-100 shadow-sm"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button>
                         <button onclick="switchTab('borrow-tab')" class="bg-gray-100 hover:bg-gray-200 transition-colors px-5 py-2 rounded-lg text-sm font-bold text-gray-600 border border-gray-200 shadow-sm">離開</button>
                     </div>
                 </div>
@@ -618,7 +632,7 @@
         let currentReportFilter = 'all';
         let adminPassword = localStorage.getItem('adminPassword') || 'd101';
         let autoRefreshTimer = null;
-        let lastKnownDateStr = ''; // 💡 用來追蹤目前系統認為的「今天」
+        let lastKnownDateStr = ''; 
 
         let currentEquipPage = 1;
         const equipItemsPerPage = 15;
@@ -629,7 +643,7 @@
         
         if (!window.roomSchedules) { window.roomSchedules = JSON.parse(localStorage.getItem('roomSchedules')) || {}; }
 
-        // 💡 取得本地時區的正確日期格式 (解決 UTC 時區跨日問題)
+        // 取得本地時區的正確日期格式
         function getLocalDateString() {
             const d = new Date();
             const year = d.getFullYear();
@@ -770,19 +784,27 @@
 
         // --- 初始化 UI ---
         function initEquipmentSelect() {
-            const select = $('equipment-eq'); if (!select) return;
-            select.innerHTML = '<option value="" disabled selected>請選擇設備...</option>';
+            let optionsHtml = '<option value="" disabled selected>請選擇設備...</option>';
             const grouped = {};
             equipmentList.forEach(eq => { if (!grouped[eq.category]) grouped[eq.category] = []; grouped[eq.category].push(eq); });
             for (const cat in grouped) {
-                const grp = document.createElement('optgroup'); grp.label = cat;
+                optionsHtml += `<optgroup label="${cat}">`;
                 grouped[cat].forEach(eq => {
-                    const option = document.createElement('option');
-                    option.value = eq.name + (eq.propertyNo ? ` (${eq.propertyNo})` : '');
-                    option.textContent = option.value; grp.appendChild(option);
+                    const val = eq.name + (eq.propertyNo ? ` [${eq.propertyNo}]` : '');
+                    optionsHtml += `<option value="${val}">${val}</option>`;
                 });
-                select.appendChild(grp);
+                optionsHtml += `</optgroup>`;
             }
+            
+            $$('.eq-select').forEach(select => {
+                const currentVal = select.value;
+                select.innerHTML = optionsHtml;
+                if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+                    select.value = currentVal;
+                }
+            });
+            window.equipSelectOptionsHtml = optionsHtml;
+            updateEquipmentDropdowns();
         }
 
         function initTeacherDatalist() {
@@ -823,6 +845,76 @@
                 const opt2 = document.createElement('option');
                 opt2.value = p.id; opt2.textContent = `${p.name} (${p.start}~${p.end})`;
                 endSel.appendChild(opt2);
+            });
+        }
+        
+        function addEquipBorrowRow() {
+            const list = $('equip-borrow-list');
+            const row = document.createElement('div');
+            row.className = 'flex flex-wrap sm:flex-nowrap gap-2 equip-borrow-item animate-fade-in';
+            row.innerHTML = `
+                <select required onchange="updateEquipmentDropdowns()" class="flex-1 min-w-[200px] px-4 py-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500 eq-select shadow-sm">
+                    ${window.equipSelectOptionsHtml || '<option value="" disabled selected>請選擇設備...</option>'}
+                </select>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <input type="number" min="1" value="1" required class="w-24 px-4 py-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 eq-qty shadow-sm" title="借用數量">
+                    <button type="button" onclick="removeEquipBorrowRow(this)" class="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg font-bold transition-colors shrink-0 shadow-sm" title="移除此項"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                </div>
+            `;
+            list.appendChild(row);
+            updateEquipmentDropdowns();
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function removeEquipBorrowRow(btn) {
+            const list = $('equip-borrow-list');
+            if (list.querySelectorAll('.equip-borrow-item').length > 1) {
+                btn.closest('.equip-borrow-item').remove();
+                updateEquipmentDropdowns();
+            } else {
+                showToast('至少需要借用一項設備', 'error');
+            }
+        }
+        
+        function resetEquipBorrowForm() {
+            const list = $('equip-borrow-list');
+            if (list) {
+                const items = list.querySelectorAll('.equip-borrow-item');
+                for (let i = 1; i < items.length; i++) {
+                    items[i].remove();
+                }
+                if(list.firstElementChild) {
+                    const sel = list.firstElementChild.querySelector('.eq-select');
+                    if(sel) sel.value = '';
+                    const qty = list.firstElementChild.querySelector('.eq-qty');
+                    if(qty) qty.value = '1';
+                }
+                updateEquipmentDropdowns();
+            }
+        }
+
+        function updateEquipmentDropdowns() {
+            const allSelects = $$('.eq-select');
+            if (!allSelects || allSelects.length === 0) return;
+            
+            const selectedVals = [];
+            allSelects.forEach(sel => {
+                if (sel.value) selectedVals.push(sel.value);
+            });
+
+            allSelects.forEach(sel => {
+                const currentVal = sel.value;
+                Array.from(sel.options).forEach(opt => {
+                    if (opt.value === '') return; 
+                    
+                    if (selectedVals.includes(opt.value) && opt.value !== currentVal) {
+                        opt.disabled = true;
+                        opt.textContent = opt.value + ' (已選)';
+                    } else {
+                        opt.disabled = false;
+                        opt.textContent = opt.value;
+                    }
+                });
             });
         }
 
@@ -885,6 +977,10 @@
             } else { 
                 stopAutoRefresh(); 
             }
+
+            if (id === 'borrow-tab' || id === 'query-tab') {
+                loadSettingsFromCloud();
+            }
             
             if (id === 'admin-tab') { 
                 renderAdminDashboard(); 
@@ -937,6 +1033,13 @@
             } else {
                 stopAutoRefresh();
             }
+
+            // 💡 確保每次切換到特定管理區塊時，畫面都會依照最新的 Array 重新渲染！
+            if (sectionId === 'equip-section') renderAdminEquipment();
+            if (sectionId === 'teacher-section') renderAdminTeachers();
+            if (sectionId === 'class-section') renderAdminClasses();
+            if (sectionId === 'key-section') renderAdminKeys();
+            if (sectionId === 'period-section') renderAdminPeriods();
             
             if (window.lucide) window.lucide.createIcons();
         }
@@ -984,6 +1087,20 @@
             } catch(e) { if(!silent) showToast('資料同步失敗', 'error'); }
         }
 
+        // 💡 修改：全域重新載入
+        async function forceRefreshAll(e) {
+            let btn;
+            if(e) btn = e.currentTarget;
+            if(btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+            
+            showToast('正在抓取最新資料與設定...', 'success');
+            await loadSettingsFromCloud();
+            await fetchData(true);
+            showToast('資料與設定已更新至最新');
+            
+            if(btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+        }
+
         async function saveSettingsToCloud() {
             const url = $('gas-url').value.trim();
             if (!url.startsWith('http')) {
@@ -1014,13 +1131,6 @@
                 const result = await res.json();
                 return result.status === 'success';
             } catch (err) { return false; }
-        }
-
-        async function forceSyncSettings() {
-            showToast('正在強制同步中...', 'success');
-            const s = await saveSettingsToCloud();
-            if (s) showToast('已成功將最新設定同步至雲端！');
-            else showToast('同步失敗，請檢查網路或 GAS 網址', 'error');
         }
 
         async function loadSettingsFromCloud() {
@@ -1058,6 +1168,15 @@
                 if (p) periodList = JSON.parse(p);
             }
             initEquipmentSelect(); initTeacherDatalist(); initKeySelect(); initClassSelect(); initPeriodSelect();
+            
+            // 💡 當雲端設定下載完成時，若停留在管理員畫面，一併刷新表格 UI
+            if ($('admin-tab').classList.contains('active')) {
+                renderAdminEquipment();
+                renderAdminTeachers();
+                renderAdminClasses();
+                renderAdminKeys();
+                renderAdminPeriods();
+            }
         }
 
         function renderTable(data) {
@@ -1564,29 +1683,33 @@
             if(!n) return showToast('請填寫必填的設備名稱', 'error');
             equipmentList.push({category: c || '一般', name: n, propertyNo: p, location: l}); 
             showToast('正在同步至雲端...', 'success');
-            await saveSettingsToCloud(); 
-            renderAdminEquipment(); 
-            initEquipmentSelect(); 
             
-            if (!keepData) {
-                $('new-eq-category').value = '';
-                $('new-eq-name').value = '';
-                $('new-eq-location').value = '';
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminEquipment(); initEquipmentSelect(); 
+                if (!keepData) {
+                    $('new-eq-category').value = '';
+                    $('new-eq-name').value = '';
+                    $('new-eq-location').value = '';
+                }
+                $('new-eq-propno').value = ''; 
+                if (keepData) $('new-eq-propno').focus(); 
+                showToast(keepData ? '已新增！請輸入下一個財編' : '新增成功並同步');
+            } else {
+                showToast('雲端同步異常，僅更新於當前裝置', 'error');
             }
-            $('new-eq-propno').value = ''; 
-            if (keepData) $('new-eq-propno').focus(); 
-            
-            showToast(keepData ? '已新增！請輸入下一個財編' : '新增成功並同步');
         }
 
         async function removeEquipment(originalIdx) { 
             equipmentList.splice(originalIdx, 1); 
             selectedEquipmentIds.delete(originalIdx); 
             showToast('正在同步至雲端...', 'success'); 
-            await saveSettingsToCloud(); 
-            renderAdminEquipment(); 
-            initEquipmentSelect(); 
-            showToast('刪除成功並同步'); 
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminEquipment(); initEquipmentSelect(); showToast('刪除成功並同步'); 
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
         }
 
         function batchDeleteEquipment() {
@@ -1598,10 +1721,13 @@
                     equipmentList.splice(idx, 1);
                 });
                 selectedEquipmentIds.clear();
-                await saveSettingsToCloud();
-                renderAdminEquipment();
-                initEquipmentSelect();
-                showToast('批次刪除成功');
+                
+                const isSuccess = await saveSettingsToCloud();
+                if (isSuccess) {
+                    renderAdminEquipment(); initEquipmentSelect(); showToast('批次刪除成功');
+                } else {
+                    showToast('雲端同步異常', 'error');
+                }
             });
         }
 
@@ -1627,11 +1753,15 @@
                 if (equipmentList[idx]) equipmentList[idx].location = newLoc;
             });
             
-            await saveSettingsToCloud();
-            selectedEquipmentIds.clear(); 
-            closeBatchEditLocationModal();
-            renderAdminEquipment();
-            showToast('批次地點更新成功');
+            const isSuccess = await saveSettingsToCloud();
+            if (isSuccess) {
+                selectedEquipmentIds.clear(); 
+                closeBatchEditLocationModal();
+                renderAdminEquipment();
+                showToast('批次地點更新成功');
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
         }
 
         function exportEquipmentList() {
@@ -1659,27 +1789,78 @@
             const n = $('new-teacher-name').value.trim(), i = $('new-teacher-id').value.trim(), p = $('new-teacher-position').value, id = $('new-teacher-identity').value, ph = $('new-teacher-phone').value.trim(), em = $('new-teacher-email')?.value.trim() || '';
             if(!n) return showToast('請填寫姓名', 'error');
             const editIdx = parseInt($('edit-teacher-index').value); const data = {name:n, empId:i, position:p, identity:id, phone:ph, email:em};
+            
             if (editIdx >= 0) teacherList[editIdx] = data; else teacherList.push(data);
+            
             showToast('正在同步至雲端...', 'success');
-            await saveSettingsToCloud(); renderAdminTeachers(); initTeacherDatalist(); cancelEditTeacher(); showToast('儲存成功並同步');
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminTeachers(); initTeacherDatalist(); cancelEditTeacher(); showToast('儲存成功並同步');
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
         }
-        async function deleteTeacher(idx) { teacherList.splice(idx,1); showToast('正在同步至雲端...', 'success'); await saveSettingsToCloud(); renderAdminTeachers(); initTeacherDatalist(); showToast('刪除成功並同步'); }
+
+        async function deleteTeacher(idx) { 
+            teacherList.splice(idx,1); 
+            showToast('正在同步至雲端...', 'success'); 
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminTeachers(); initTeacherDatalist(); showToast('刪除成功並同步'); 
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
+        }
+
         async function saveClass() {
             const n = $('new-class-name').value.trim(); if(!n) return showToast('請填寫名稱', 'error');
             const editIdx = parseInt($('edit-class-index').value);
             if (editIdx >= 0) classList[editIdx] = n; else classList.push(n);
+            
             showToast('正在同步至雲端...', 'success');
-            await saveSettingsToCloud(); renderAdminClasses(); initClassSelect(); cancelEditClass(); showToast('儲存成功並同步');
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminClasses(); initClassSelect(); cancelEditClass(); showToast('儲存成功並同步');
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
         }
-        async function deleteClass(idx) { classList.splice(idx,1); showToast('正在同步至雲端...', 'success'); await saveSettingsToCloud(); renderAdminClasses(); initClassSelect(); showToast('刪除成功並同步'); }
+
+        async function deleteClass(idx) { 
+            classList.splice(idx,1); 
+            showToast('正在同步至雲端...', 'success'); 
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminClasses(); initClassSelect(); showToast('刪除成功並同步'); 
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
+        }
+
         async function saveKey() {
             const n = $('new-key-name').value.trim(); if(!n) return showToast('請填寫名稱', 'error');
             const editIdx = parseInt($('edit-key-index').value);
             if (editIdx >= 0) keyList[editIdx] = n; else keyList.push(n);
+            
             showToast('正在同步至雲端...', 'success');
-            await saveSettingsToCloud(); renderAdminKeys(); initKeySelect(); cancelEditKey(); showToast('儲存成功並同步');
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminKeys(); initKeySelect(); cancelEditKey(); showToast('儲存成功並同步');
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
         }
-        async function deleteKey(idx) { keyList.splice(idx,1); showToast('正在同步至雲端...', 'success'); await saveSettingsToCloud(); renderAdminKeys(); initKeySelect(); showToast('刪除成功並同步'); }
+
+        async function deleteKey(idx) { 
+            keyList.splice(idx,1); 
+            showToast('正在同步至雲端...', 'success'); 
+            const isSuccess = await saveSettingsToCloud(); 
+            if (isSuccess) {
+                renderAdminKeys(); initKeySelect(); showToast('刪除成功並同步'); 
+            } else {
+                showToast('雲端同步異常', 'error');
+            }
+        }
 
         function triggerEquipImport() { $('equip-import-input').click(); }
         function handleEquipImport(e) {
@@ -1691,8 +1872,12 @@
                     const newItems = json.map(row => ({ category: row['分類'] || '一般', name: row['名稱'] || '', propertyNo: row['財產編號'] || '', location: row['存放地點'] || '' })).filter(item => item.name !== '');
                     equipmentList = [...equipmentList, ...newItems]; 
                     showToast('正在同步匯入資料至雲端...', 'success');
-                    await saveSettingsToCloud(); 
-                    renderAdminEquipment(); initEquipmentSelect(); showToast(`成功匯入 ${newItems.length} 筆資產並同步`);
+                    const isSuccess = await saveSettingsToCloud(); 
+                    if (isSuccess) {
+                        renderAdminEquipment(); initEquipmentSelect(); showToast(`成功匯入 ${newItems.length} 筆資產並同步`);
+                    } else {
+                        showToast('雲端同步異常', 'error');
+                    }
                 } catch (error) { showToast('匯入失敗', 'error'); }
                 e.target.value = ''; 
             };
@@ -1900,6 +2085,10 @@
                 if (borrowerPhone) finalBorrower += ` (${borrowerPhone})`;
 
                 let eqName = '';
+                let finalQty = 1;
+                const qtyNode = $(`quantity-${type}`);
+                if (qtyNode) finalQty = qtyNode.value;
+
                 if (type === 'key') {
                     const keySelect = $('equipment-key');
                     eqName = `[鑰匙] ${keySelect ? keySelect.value : ''}`;
@@ -1919,6 +2108,29 @@
                         const qty = $('tabletpen-qty')?.value || '1';
                         eqName += ` (+平板筆 x${qty})`;
                     }
+                } else if (type === 'eq') {
+                    const items = e.target.querySelectorAll('.equip-borrow-item');
+                    let mainEq = '';
+                    let additionalEq = '';
+                    
+                    items.forEach((item, index) => {
+                        const sel = item.querySelector('.eq-select').value;
+                        const q = parseInt(item.querySelector('.eq-qty').value) || 1;
+                        if (!sel) return;
+                        
+                        if (index === 0) {
+                            mainEq = sel;
+                            finalQty = q; // Payload quantity is determined by the main item
+                        } else {
+                            additionalEq += ` (+${sel} x${q})`; // Sub-items format perfectly matches our Regex!
+                        }
+                    });
+                    if (!mainEq) {
+                        showToast('請至少選擇一項設備', 'error');
+                        if (btn) btn.disabled = false;
+                        return;
+                    }
+                    eqName = `${mainEq}${additionalEq}`;
                 } else if (type === 'classroom') {
                     const dateNode = $('reserve-date-classroom');
                     const startNode = $('reserve-period-start-classroom');
@@ -1955,12 +2167,8 @@
                     }
                     
                     eqName = `[預借教室] ${equipVal} (${dateVal} ${startVal}~${endVal})`;
-                } else { 
-                    const eqNode = $('equipment-eq');
-                    eqName = eqNode ? eqNode.value : ''; 
                 }
 
-                const qtyNode = $(`quantity-${type}`);
                 const expectedReturnDateNode = $(`expectedReturnDate-${type}`);
                 const reserveDateNode = $('reserve-date-classroom');
 
@@ -1968,7 +2176,7 @@
                     action: 'borrow', 
                     borrower: finalBorrower, 借用人: finalBorrower,
                     equipment: eqName, 設備名稱: eqName,
-                    quantity: qtyNode ? qtyNode.value : 1, 數量: qtyNode ? qtyNode.value : 1,
+                    quantity: finalQty, 數量: finalQty,
                     expectedReturnDate: expectedReturnDateNode && expectedReturnDateNode.value ? expectedReturnDateNode.value : (reserveDateNode ? reserveDateNode.value : ''), 
                     預計歸還日期: expectedReturnDateNode && expectedReturnDateNode.value ? expectedReturnDateNode.value : (reserveDateNode ? reserveDateNode.value : ''), 
                     status: type === 'key' ? '借用中' : '待審核', 狀態: type === 'key' ? '借用中' : '待審核',
@@ -1982,6 +2190,7 @@
                     mockDatabase.push({...payload, ID: Date.now().toString()}); 
                     showToast('模擬送出成功'); 
                     e.target.reset(); 
+                    if (type === 'eq') resetEquipBorrowForm();
                     switchTab('report-tab'); 
                     if (btn) btn.disabled = false; 
                     return; 
@@ -1994,11 +2203,13 @@
                 }).then(() => {
                     showToast('申請已送出'); 
                     e.target.reset();
+                    if (type === 'eq') resetEquipBorrowForm();
                     setTimeout(() => { fetchData(true); switchTab('report-tab'); }, 800);
                 }).catch(err => {
                     console.warn(err);
                     showToast('發送成功，即將跳轉', 'success'); 
                     e.target.reset();
+                    if (type === 'eq') resetEquipBorrowForm();
                     setTimeout(() => { fetchData(true); switchTab('report-tab'); }, 800);
                 }).finally(() => {
                     if (btn) btn.disabled = false;
@@ -2073,10 +2284,23 @@
             }
         }
 
-        function executeTeacherQuery(e) {
+        async function executeTeacherQuery(e) {
             e.preventDefault();
             const n = $('query-name').value.trim(), id = $('query-emp-id').value.trim();
-            if (!teacherList.find(t => t.name === n && t.empId === id)) return showToast('查無此身分資料，請確認', 'error');
+            
+            let matched = teacherList.find(t => t.name === n && t.empId === id);
+            
+            if (!matched) {
+                showToast('正在為您同步最新教師名單...', 'success');
+                const btn = e.target.querySelector('button[type="submit"]');
+                if (btn) btn.disabled = true;
+                await loadSettingsFromCloud(); 
+                if (btn) btn.disabled = false;
+                matched = teacherList.find(t => t.name === n && t.empId === id);
+            }
+            
+            if (!matched) return showToast('查無此身分資料，請確認', 'error');
+
             const c = $('query-table-body'); c.innerHTML = ''; 
             $('query-results-container').classList.remove('hidden'); $('query-result-name-text').innerText = n;
             const data = (window.currentFetchedData || mockDatabase).filter(d => getBorrower(d) && getBorrower(d).includes(n));
@@ -2175,7 +2399,6 @@
             const day = String(now.getDate()).padStart(2, '0');
             const todayStr = `${year}-${month}-${day}`;
             
-            // 💡 跨日自動更新邏輯
             if (lastKnownDateStr && todayStr !== lastKnownDateStr) {
                 lastKnownDateStr = todayStr;
                 if ($('report-start-date')) $('report-start-date').value = todayStr;
@@ -2203,7 +2426,7 @@
 
         async function init() {
             const todayStr = getLocalDateString();
-            lastKnownDateStr = todayStr; // 設定初始的今天日期
+            lastKnownDateStr = todayStr; 
             if ($('report-start-date')) $('report-start-date').value = todayStr;
             if ($('report-end-date')) $('report-end-date').value = todayStr;
 
