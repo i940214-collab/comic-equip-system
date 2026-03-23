@@ -35,6 +35,12 @@ tailwind.config = {
     --panel-shadow: 0 20px 44px rgba(0, 0, 0, 0.06);
     --panel-shadow-strong: 0 28px 72px rgba(0, 0, 0, 0.08);
 }
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
 .inp {
     width: 100%;
     padding: 0.85rem 1rem;
@@ -300,8 +306,8 @@ tailwind.config = {
 body {
     position: relative;
     background:
-        radial-gradient(circle at 0% 0%, rgba(0,113,227,0.08), transparent 24%),
-        radial-gradient(circle at 100% 12%, rgba(0,113,227,0.05), transparent 22%),
+        radial-gradient(circle at 8% 6%, rgba(0,113,227,0.06), transparent 24%),
+        radial-gradient(circle at 92% 8%, rgba(0,113,227,0.06), transparent 24%),
         linear-gradient(180deg, #fbfbfd 0%, var(--surface-page) 42%, #fafafc 100%);
 }
 body::before {
@@ -316,7 +322,10 @@ body::before {
     pointer-events: none;
     opacity: 0.2;
 }
-.page-shell { position: relative; }
+.page-shell {
+    position: relative;
+    overflow-x: clip;
+}
 .page-shell::before,
 .page-shell::after {
     content: "";
@@ -327,19 +336,19 @@ body::before {
     opacity: 0.6;
 }
 .page-shell::before {
-    width: 17rem;
-    height: 17rem;
+    width: 15rem;
+    height: 15rem;
     top: 1rem;
-    right: -3rem;
-    background: rgba(0, 113, 227, 0.08);
+    right: -2rem;
+    background: rgba(0, 113, 227, 0.06);
     animation: floatGlow 10s ease-in-out infinite;
 }
 .page-shell::after {
-    width: 14rem;
-    height: 14rem;
+    width: 15rem;
+    height: 15rem;
     left: -2rem;
-    top: 14rem;
-    background: rgba(0, 113, 227, 0.05);
+    top: 12rem;
+    background: rgba(0, 113, 227, 0.06);
     animation: drift 12s ease-in-out infinite;
 }
 .hero-panel {
@@ -365,11 +374,13 @@ body::before {
 .hero-panel::before {
     content: "";
     position: absolute;
-    inset: auto -7rem -7rem auto;
-    width: 16rem;
-    height: 16rem;
+    left: 50%;
+    bottom: -8rem;
+    width: 18rem;
+    height: 18rem;
+    transform: translateX(-50%);
     border-radius: 9999px;
-    background: radial-gradient(circle, rgba(0,113,227,0.12) 0%, rgba(0,113,227,0) 70%);
+    background: radial-gradient(circle, rgba(0,113,227,0.08) 0%, rgba(0,113,227,0) 72%);
     pointer-events: none;
 }
 .surface-panel {
