@@ -4,55 +4,718 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>漫畫系設備借用管理系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
-<script>tailwind.config = { theme: { extend: {} } }</script>
-<style type="text/tailwindcss">
-@layer components {
-    .inp { @apply w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm transition-shadow; }
-    .btn { @apply px-4 py-2 rounded-lg font-bold text-sm shadow-sm flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors; }
-    .btn-b { @apply bg-blue-600 text-white hover:bg-blue-700; }
-    .btn-g { @apply bg-gray-100 text-gray-600 hover:bg-gray-200; }
-    .btn-r { @apply bg-red-50 text-red-600 hover:bg-red-100 border border-red-100; }
-    .btn-gr { @apply bg-green-50 text-green-600 hover:bg-green-100 border border-green-100; }
-    .btn-p { @apply bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-100; }
-    .btn-i { @apply bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100; }
-    .lbl { @apply block text-sm font-bold text-gray-700 mb-1; }
-    .th { @apply px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-50 border-b; }
-    .td { @apply px-4 py-4 align-middle border-b border-gray-100 text-sm; }
-    .t-btn { @apply flex-1 py-3 px-4 font-medium text-gray-500 hover:text-blue-600 border-2 border-transparent rounded-t-lg flex items-center justify-center gap-2 transition-colors; }
-    .t-act { @apply font-bold text-blue-600 bg-white border-blue-600 border-b-white relative z-10 -mb-[2px] !border-transparent; border-color: #2563eb #2563eb white #2563eb !important; }
-    .s-btn { @apply px-6 py-2.5 text-sm font-bold rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-2 shadow-sm shrink-0 transition-colors; }
-    .s-act { @apply bg-blue-600 text-white hover:bg-blue-700; }
-    .a-btn { @apply px-5 py-2.5 text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-lg whitespace-nowrap transition-all; }
-    .a-act { @apply bg-blue-600 text-white shadow-md hover:bg-blue-700; }
-    .mod-w { @apply fixed inset-0 bg-black/50 flex items-center justify-center z-[100]; }
-    .mod-b { @apply bg-white p-6 rounded-3xl w-80 shadow-2xl; }
-    .cbx { @apply w-4 h-4 text-blue-600; }
-    .flex-c { @apply flex flex-col; }
-    .flex-r { @apply flex items-center; }
-    .flex-b { @apply flex justify-between items-center; }
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            fontFamily: {
+                sans: ['"Noto Sans TC"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                display: ['"Noto Sans TC"', 'ui-sans-serif', 'system-ui', 'sans-serif']
+            }
+        }
+    }
 }
-.tab-content { display: none; } .tab-content.active { display: block; animation: fadeIn 0.3s ease-in-out; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</script>
+<style type="text/tailwindcss">
+:root {
+    --ink-950: #1d1d1f;
+    --ink-800: #424245;
+    --ink-600: #6e6e73;
+    --surface-page: #f5f5f7;
+    --surface-card: rgba(255, 255, 255, 0.92);
+    --surface-line: rgba(0, 0, 0, 0.06);
+    --blue-accent: #0071e3;
+    --blue-accent-dark: #0058b0;
+    --panel-shadow: 0 20px 44px rgba(0, 0, 0, 0.06);
+    --panel-shadow-strong: 0 28px 72px rgba(0, 0, 0, 0.08);
+}
+.inp {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 1rem;
+    outline: none;
+    background: rgba(255, 255, 255, 0.96);
+    color: #1d1d1f;
+    font-size: 0.875rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+.inp::placeholder { color: #8a8a8f; }
+.inp:focus {
+    border-color: rgba(0, 113, 227, 0.72);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
+}
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+    cursor: pointer;
+    padding: 0.7rem 1rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+.btn-b {
+    color: #fff;
+    background: linear-gradient(180deg, var(--blue-accent), var(--blue-accent-dark));
+    position: relative;
+    overflow: hidden;
+}
+.btn-b:hover { box-shadow: 0 16px 28px rgba(0, 113, 227, 0.24); }
+.btn-b::before,
+.utility-action::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 20%, rgba(255,255,255,0.22) 48%, transparent 76%);
+    transform: translateX(-140%);
+    transition: transform 0.75s ease;
+    pointer-events: none;
+}
+.btn-b:hover::before,
+.utility-action:hover::before {
+    transform: translateX(140%);
+}
+.btn-g {
+    color: #424245;
+    background: rgba(255, 255, 255, 0.92);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+.btn-g:hover { background: #fff; }
+.btn-r {
+    color: #d92d20;
+    background: #fff2f0;
+    border-color: rgba(217, 45, 32, 0.12);
+}
+.btn-r:hover { background: #ffe9e6; }
+.btn-gr {
+    color: #107c41;
+    background: #eefbf3;
+    border-color: rgba(16, 124, 65, 0.12);
+}
+.btn-gr:hover { background: #e6f8ec; }
+.btn-p {
+    color: #6941c6;
+    background: #f4f0ff;
+    border-color: rgba(105, 65, 198, 0.12);
+}
+.btn-p:hover { background: #ede6ff; }
+.btn-i {
+    color: #0071e3;
+    background: #eff6ff;
+    border-color: rgba(0, 113, 227, 0.12);
+}
+.btn-i:hover { background: #e8f2ff; }
+.lbl {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #424245;
+}
+.th {
+    padding: 1rem;
+    text-align: left;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #6e6e73;
+    background: rgba(250, 250, 252, 0.98);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.td {
+    padding: 1rem;
+    vertical-align: middle;
+    font-size: 0.875rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.t-btn,
+.s-btn,
+.a-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+.t-btn {
+    flex: 1 1 0%;
+    min-width: 160px;
+    padding: 0.95rem 1.25rem;
+    color: #6e6e73;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 1.25rem;
+}
+.t-btn:hover { color: #1d1d1f; }
+.t-act {
+    color: #1d1d1f;
+    background: #fff;
+    border-color: rgba(0, 0, 0, 0.06);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+}
+.s-btn {
+    padding: 0.8rem 1.4rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: #424245;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+    backdrop-filter: blur(12px);
+}
+.s-btn:hover {
+    background: #fff;
+    color: #1d1d1f;
+}
+.s-act {
+    color: #fff;
+    background: linear-gradient(180deg, var(--blue-accent), var(--blue-accent-dark));
+    box-shadow: 0 16px 28px rgba(0, 113, 227, 0.18);
+}
+.s-act:hover { background: linear-gradient(180deg, #0077ed, #0062c4); color: #fff; }
+.a-btn {
+    padding: 0.8rem 1.25rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    color: #424245;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+}
+.a-btn:hover {
+    color: #1d1d1f;
+    background: #fff;
+}
+.a-act {
+    color: #fff;
+    background: linear-gradient(180deg, var(--blue-accent), var(--blue-accent-dark));
+    border-color: var(--blue-accent);
+    box-shadow: 0 16px 28px rgba(0, 113, 227, 0.18);
+}
+.a-act:hover { background: linear-gradient(180deg, #0077ed, #0062c4); color: #fff; }
+.mod-w {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(8px);
+}
+.mod-b {
+    width: 20rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 2rem;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+}
+.cbx {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.3rem;
+    accent-color: var(--blue-accent);
+}
+.flex-c { display: flex; flex-direction: column; }
+.flex-r { display: flex; align-items: center; }
+.flex-b { display: flex; justify-content: space-between; align-items: center; }
+.hidden { display: none !important; }
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes floatGlow {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(0, -10px, 0) scale(1.04); }
+}
+@keyframes drift {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(12px, -8px, 0); }
+}
+@keyframes pulseBorder {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 113, 227, 0.06); }
+    50% { box-shadow: 0 0 0 10px rgba(0, 113, 227, 0); }
+}
 .no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background: linear-gradient(180deg, rgba(0,113,227,0.5), rgba(0,87,173,0.7));
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.04);
+}
+body {
+    position: relative;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(0,113,227,0.08), transparent 24%),
+        radial-gradient(circle at 100% 12%, rgba(0,113,227,0.05), transparent 22%),
+        linear-gradient(180deg, #fbfbfd 0%, var(--surface-page) 42%, #fafafc 100%);
+}
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.28) 1px, transparent 1px);
+    background-size: 52px 52px, 52px 52px;
+    mask-image: radial-gradient(circle at center, rgba(0,0,0,0.45), transparent 82%);
+    pointer-events: none;
+    opacity: 0.2;
+}
+.page-shell { position: relative; }
+.page-shell::before,
+.page-shell::after {
+    content: "";
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(70px);
+    pointer-events: none;
+    opacity: 0.6;
+}
+.page-shell::before {
+    width: 17rem;
+    height: 17rem;
+    top: 1rem;
+    right: -3rem;
+    background: rgba(0, 113, 227, 0.08);
+    animation: floatGlow 10s ease-in-out infinite;
+}
+.page-shell::after {
+    width: 14rem;
+    height: 14rem;
+    left: -2rem;
+    top: 14rem;
+    background: rgba(0, 113, 227, 0.05);
+    animation: drift 12s ease-in-out infinite;
+}
+.hero-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(250,250,252,0.9)),
+        linear-gradient(135deg, rgba(0,113,227,0.04), rgba(255,255,255,0));
+    box-shadow: var(--panel-shadow-strong);
+    backdrop-filter: blur(24px);
+}
+.hero-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 18% 24%, rgba(255,255,255,0.58), transparent 22%),
+        linear-gradient(120deg, rgba(255,255,255,0.12), transparent 32%, rgba(255,255,255,0.05) 48%, transparent 70%);
+    pointer-events: none;
+    opacity: 0.9;
+}
+.hero-panel::before {
+    content: "";
+    position: absolute;
+    inset: auto -7rem -7rem auto;
+    width: 16rem;
+    height: 16rem;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(0,113,227,0.12) 0%, rgba(0,113,227,0) 70%);
+    pointer-events: none;
+}
+.surface-panel {
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.7);
+    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,248,250,0.94));
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.06);
+    backdrop-filter: blur(22px);
+}
+.surface-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.34), transparent 14%);
+    pointer-events: none;
+}
+.section-intro {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border: 1px solid rgba(211, 188, 154, 0.52);
+    border-radius: 2rem;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(30,26,32,0.96), rgba(60,43,53,0.94), rgba(105,55,50,0.9));
+    box-shadow: 0 28px 80px rgba(54, 37, 27, 0.24);
+}
+.section-intro::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(120deg, rgba(255,255,255,0.08), transparent 34%, transparent 66%, rgba(255,255,255,0.04)),
+        radial-gradient(circle at 85% 20%, rgba(255,255,255,0.06), transparent 22%);
+    pointer-events: none;
+}
+.section-intro::before {
+    content: "";
+    position: absolute;
+    inset: -35% auto auto 55%;
+    width: 16rem;
+    height: 16rem;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0) 70%);
+}
+.info-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 113, 227, 0.1);
+    background: rgba(255, 255, 255, 0.88);
+    color: #0071e3;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    backdrop-filter: blur(12px);
+}
+.hero-metric {
+    position: relative;
+    padding: 1rem;
+    border-radius: 1.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(250,250,252,0.84));
+    text-align: left;
+    backdrop-filter: blur(12px);
+    transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+}
+.hero-metric:hover {
+    transform: translateY(-4px);
+    border-color: rgba(0, 113, 227, 0.12);
+    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(250,250,252,0.9));
+}
+.hero-metric strong {
+    display: block;
+    margin-top: 0.35rem;
+    font-family: "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+    font-size: 1.875rem;
+    line-height: 1;
+    font-weight: 700;
+    color: #1d1d1f;
+}
+.app-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 1rem 1rem 0;
+    padding: 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 1.75rem;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(16px);
+    position: sticky;
+    top: 0.75rem;
+    z-index: 20;
+}
+.form-shell,
+.query-shell,
+.query-results-shell,
+.report-shell,
+.admin-shell {
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 2rem;
+    background: var(--surface-card);
+    box-shadow: var(--panel-shadow);
+    backdrop-filter: blur(18px);
+    position: relative;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.form-shell::before,
+.query-shell::before,
+.query-results-shell::before,
+.admin-shell::before,
+.data-table-shell::before {
+    content: "";
+    position: absolute;
+    left: 1.25rem;
+    right: 1.25rem;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(0,113,227,0), rgba(0,113,227,0.28), rgba(0,113,227,0));
+    pointer-events: none;
+}
+.form-shell:hover,
+.query-shell:hover,
+.query-results-shell:hover,
+.admin-shell:hover,
+.data-table-shell:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.1);
+    border-color: rgba(0, 113, 227, 0.12);
+}
+.query-results-shell {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+.query-results-shell table {
+    width: 100%;
+    min-width: 100%;
+}
+.query-results-stack {
+    display: grid;
+    gap: 1rem;
+    width: 100%;
+}
+.admin-shell {
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.94), rgba(249,249,251,0.9)),
+        rgba(255,255,255,0.82);
+}
+.query-shell {
+    background:
+        radial-gradient(circle at top right, rgba(0,113,227,0.05), transparent 24%),
+        rgba(255,255,255,0.9);
+}
+.query-results-shell {
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(249,249,251,0.96));
+}
+.query-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1.25rem;
+}
+.utility-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    position: relative;
+    overflow: hidden;
+    padding: 0.9rem 1.25rem;
+    border: 1px solid rgba(0, 113, 227, 0.08);
+    border-radius: 1rem;
+    background: linear-gradient(180deg, var(--blue-accent), var(--blue-accent-dark));
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 700;
+    box-shadow: 0 14px 28px rgba(0, 113, 227, 0.18);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.utility-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 32px rgba(0, 113, 227, 0.2);
+}
+.current-datetime-display {
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 1rem;
+    background: rgba(248, 248, 250, 0.94);
+    color: #6e6e73;
+    font-size: 0.875rem;
+    font-weight: 700;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.03);
+}
+.current-datetime-display > * + * { margin-top: 0.25rem; }
+.report-metric {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 1.5rem 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 1.75rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(249,249,251,0.92));
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.report-metric::before {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    top: 0.8rem;
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, rgba(0,113,227,0.75), rgba(0,113,227,0));
+}
+.report-metric:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); }
+.data-table-shell {
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 1.75rem;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.05);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.data-table-shell table tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+.data-table-shell table tbody tr:hover {
+    background: rgba(0, 113, 227, 0.03);
+}
+.t-btn,
+.s-btn,
+.a-btn,
+.report-metric,
+.hero-metric,
+.utility-action,
+.btn,
+.hero-panel,
+.section-intro,
+.form-shell,
+.query-shell,
+.query-results-shell,
+.data-table-shell,
+.admin-shell {
+    animation: pulseBorder 2.8s ease-in-out 1;
+}
+.section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(0, 113, 227, 0.08);
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,248,250,0.98));
+    color: #0071e3;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    box-shadow: 0 10px 20px rgba(0, 113, 227, 0.06);
+}
+.soft-caption {
+    color: #6e6e73;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.7;
+}
+@media (min-width: 768px) {
+    .section-intro { padding: 2rem; }
+}
+@media (max-width: 1100px) {
+    .hero-panel {
+        padding: 1rem;
+    }
+    .hero-metric {
+        min-height: 92px !important;
+        padding: 0.72rem;
+    }
+    .hero-metric strong {
+        font-size: 1rem;
+    }
+}
+@media (max-width: 900px) {
+    .hero-panel h1 {
+        font-size: 1.55rem !important;
+        line-height: 1.02 !important;
+    }
+    .hero-panel p {
+        font-size: 0.86rem !important;
+        line-height: 1.45rem !important;
+    }
+}
+@media (max-width: 640px) {
+    .hero-panel h1 {
+        font-size: 1.34rem !important;
+        line-height: 1 !important;
+    }
+}
+@media (max-width: 767px) {
+    .app-tabs {
+        position: static;
+    }
+    .query-tools {
+        justify-content: stretch;
+    }
+    .utility-action {
+        width: 100%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+}
 @media print { body * { visibility: hidden; } #history-print-area, #history-print-area * { visibility: visible; } #history-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; background: white;} .no-print { display: none !important; } table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #e5e7eb; padding: 12px 8px; text-align: left; } }
 </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+<body class="min-h-screen font-sans text-slate-800 antialiased">
 
-<div class="max-w-7xl mx-auto pt-8 pb-12 px-4 sm:px-6 lg:px-8">
-    <header class="mb-8 text-center relative text-gray-800">
-        <h1 class="text-3xl font-bold text-blue-800 flex items-center justify-center gap-3"><i data-lucide="laptop"></i> 漫畫系設備借用管理系統</h1>
-        <p class="text-gray-500 mt-2 font-medium">輕鬆管理、追蹤各項設備的借用與歸還狀態</p>
-        <button onclick="window.openAdmin()" class="absolute top-0 right-0 p-2 text-gray-400 hover:text-blue-600 bg-white rounded-full shadow-sm border border-gray-200 transition-colors"><i data-lucide="settings" class="w-5 h-5"></i></button>
+<div class="page-shell max-w-7xl mx-auto pt-6 pb-12 px-4 sm:px-6 lg:px-8">
+    <header class="hero-panel mb-5 rounded-[2rem] p-4 md:p-5 xl:p-6 text-slate-800">
+        <div class="relative z-10 flex flex-col gap-5">
+            <div class="flex items-start justify-between gap-4">
+                <div class="info-chip"><i data-lucide="sparkles" class="h-4 w-4"></i> Department Equipment System</div>
+                <button onclick="window.openAdmin()" class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 bg-white/90 text-[#6e6e73] shadow-[0_16px_34px_rgba(0,0,0,0.06)] transition-all hover:text-[#0071e3] hover:-translate-y-0.5"><i data-lucide="settings" class="w-5 h-5"></i></button>
+            </div>
+            <div class="grid gap-5 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-center lg:gap-8 xl:gap-10">
+                <div class="flex items-center gap-4 lg:gap-5">
+                    <span class="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-[1.35rem] bg-[#1d1d1f] text-white shadow-[0_18px_40px_rgba(0,0,0,0.12)] md:h-20 md:w-20"><i data-lucide="laptop" class="h-8 w-8 md:h-10 md:w-10"></i></span>
+                    <h1 class="font-display text-[1.45rem] font-bold leading-[1.14] tracking-[0.04em] text-slate-900 md:text-[1.8rem] lg:text-[2.1rem] xl:text-[2.6rem]">
+                        <span class="block">漫畫系設備借用</span>
+                        <span class="block">管理系統</span>
+                    </h1>
+                </div>
+                <div class="min-w-0 lg:pt-1">
+                    <p class="max-w-3xl text-[0.86rem] font-medium leading-6 text-slate-600 md:text-[0.92rem] md:leading-6">
+                        整合鑰匙、設備、教室與展覽空間申請流程，讓借還追蹤、審核與個人查詢在同一個介面完成。
+                    </p>
+                    <div class="mt-3.5 flex flex-wrap gap-2">
+                        <span class="rounded-full border border-black/5 bg-white px-3 py-1.5 text-[0.78rem] font-bold text-[#1d1d1f] md:text-[0.82rem]">即時借用狀態</span>
+                        <span class="rounded-full border border-black/5 bg-white px-3 py-1.5 text-[0.78rem] font-bold text-[#1d1d1f] md:text-[0.82rem]">雲端資料同步</span>
+                        <span class="rounded-full border border-black/5 bg-white px-3 py-1.5 text-[0.78rem] font-bold text-[#1d1d1f] md:text-[0.82rem]">教師自助查詢</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </header>
 
     <input type="hidden" id="gas-url" value="https://script.google.com/macros/s/AKfycby_iWc5LwROYYtSGR9yC69j5deAXtkYLSxl_9yBMKXVPTLMnNl8ql-TucCKDaJS_A/exec">
 
-    <main class="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
-        <div class="flex border-b-2 border-blue-600 bg-white px-2 pt-2 gap-1 flex-wrap">
+    <main class="surface-panel rounded-[2rem] overflow-hidden">
+        <div class="app-tabs">
             <button onclick="window.switchTab('borrow-tab')" id="btn-borrow-tab" class="t-btn t-act"><i data-lucide="clipboard-pen"></i> 借用登記</button>
             <button onclick="window.switchTab('report-tab')" id="btn-report-tab" class="t-btn"><i data-lucide="list-collapse"></i> 報表與歸還</button>
             <button onclick="window.switchTab('query-tab')" id="btn-query-tab" class="t-btn"><i data-lucide="search"></i> 個人查詢</button>
@@ -60,7 +723,7 @@
 
         <!-- 借用登記 -->
         <div id="borrow-tab" class="tab-content active p-6 md:p-8">
-            <div class="flex items-center w-full gap-2 mb-6 border-b border-gray-200 pb-4 flex-wrap">
+            <div class="mb-6 flex items-center w-full gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap">
                 <button onclick="window.switchBorrowSection('key-borrow-section')" id="btn-borrow-key" class="s-btn s-act"><i data-lucide="key" class="w-4 h-4"></i> 借鑰匙</button>
                 <button onclick="window.switchBorrowSection('equip-borrow-section')" id="btn-borrow-equip" class="s-btn"><i data-lucide="monitor-speaker" class="w-4 h-4"></i> 借設備器材</button>
                 <button onclick="window.switchBorrowSection('classroom-borrow-section')" id="btn-borrow-classroom" class="s-btn"><i data-lucide="door-open" class="w-4 h-4"></i> 預借教室</button>
@@ -68,7 +731,7 @@
             </div>
 
             <div id="key-borrow-section" class="borrow-section-content block">
-                <form onsubmit="window.submitBorrow(event, 'key')" class="space-y-6">
+                <form onsubmit="window.submitBorrow(event, 'key')" class="form-shell space-y-6 p-6 md:p-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div><label class="lbl">班級處室</label><select id="borrower-class-key" class="inp"></select></div>
                         <div><label class="lbl">借用人姓名 <span class="text-red-500">*</span></label><input type="text" id="borrower-key" required list="teacher-list" class="inp" oninput="window.autoFillPhone('key')"><datalist id="teacher-list"></datalist></div>
@@ -95,7 +758,7 @@
             </div>
 
             <div id="equip-borrow-section" class="borrow-section-content hidden">
-                <form onsubmit="window.submitBorrow(event, 'eq')" class="space-y-6">
+                <form onsubmit="window.submitBorrow(event, 'eq')" class="form-shell space-y-6 p-6 md:p-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div><label class="lbl">班級處室</label><select id="borrower-class-eq" class="inp"></select></div>
                         <div><label class="lbl">借用人姓名 <span class="text-red-500">*</span></label><input type="text" id="borrower-eq" required list="teacher-list" class="inp" oninput="window.autoFillPhone('eq')"></div>
@@ -112,7 +775,7 @@
             </div>
 
             <div id="classroom-borrow-section" class="borrow-section-content hidden">
-                <form onsubmit="window.submitBorrow(event, 'classroom')" class="space-y-6">
+                <form onsubmit="window.submitBorrow(event, 'classroom')" class="form-shell space-y-6 p-6 md:p-8">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div><label class="lbl">班級處室</label><select id="borrower-class-classroom" class="inp"></select></div>
                         <div><label class="lbl">借用人姓名 <span class="text-red-500">*</span></label><input type="text" id="borrower-classroom" required list="teacher-list" class="inp" oninput="window.autoFillPhone('classroom')"></div>
@@ -138,7 +801,7 @@
                 </div>
 
                 <div class="flex-c lg:flex-row gap-6">
-                    <div class="flex-1 bg-white p-6 md:p-8 rounded-xl border shadow-sm relative overflow-hidden">
+                    <div class="form-shell flex-1 p-6 md:p-8 relative overflow-hidden">
                         <h3 class="text-xl font-black text-purple-900 mb-6 flex-r gap-2"><i data-lucide="palette"></i> 展覽空間預約申請</h3>
                         <form onsubmit="window.submitBorrow(event, 'exhibition')" class="space-y-5">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -163,61 +826,65 @@
 
         <!-- 報表與狀態 -->
         <div id="report-tab" class="tab-content p-0">
-            <div class="p-6 bg-gray-50 flex-c lg:flex-row justify-between items-start lg:items-center border-b border-gray-200 gap-4">
-                <div class="flex-r gap-4">
-                    <h2 class="text-xl font-bold">設備借用狀態</h2>
-                    <div class="flex-r bg-white border border-gray-300 rounded-lg px-3 py-1.5 shadow-sm">
-                        <i data-lucide="calendar" class="w-4 h-4 text-blue-600 mr-2"></i>
-                        <input type="date" id="report-start-date" class="text-sm outline-none font-medium text-gray-700 bg-transparent" onchange="window.renderTable()">
-                        <span class="mx-2 text-gray-400 font-bold">~</span>
-                        <input type="date" id="report-end-date" class="text-sm outline-none font-medium text-gray-700 bg-transparent" onchange="window.renderTable()">
-                        <button onclick="window.clearReportDate()" class="ml-3 text-gray-400 hover:text-blue-500 transition-colors" title="回到今日"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+            <div class="relative overflow-hidden border-b border-slate-200/80 bg-[linear-gradient(135deg,rgba(15,23,42,0.97),rgba(12,74,110,0.94),rgba(8,145,178,0.88))] p-6 md:p-8 flex-c lg:flex-row justify-between items-start lg:items-center gap-4 text-white">
+                <div class="flex-r gap-4 flex-wrap">
+                    <div>
+                        <div class="text-sm font-bold tracking-[0.28em] text-sky-100 uppercase">Status Overview</div>
+                        <h2 class="mt-2 font-display text-3xl font-bold">設備借用狀態</h2>
+                        <p class="mt-2 text-sm font-medium text-slate-200">以日期區間快速切換當日紀錄、歷史借用與目前待處理項目。</p>
+                    </div>
+                    <div class="flex-r bg-white/90 border border-white/70 rounded-[1.3rem] px-4 py-3 shadow-[0_18px_38px_rgba(15,23,42,0.14)] backdrop-blur">
+                        <i data-lucide="calendar" class="w-4 h-4 text-sky-700 mr-2"></i>
+                        <input type="date" id="report-start-date" class="text-sm outline-none font-medium text-slate-700 bg-transparent" onchange="window.renderTable()">
+                        <span class="mx-2 text-slate-400 font-bold">~</span>
+                        <input type="date" id="report-end-date" class="text-sm outline-none font-medium text-slate-700 bg-transparent" onchange="window.renderTable()">
+                        <button onclick="window.clearReportDate()" class="ml-3 text-slate-400 hover:text-sky-600 transition-colors" title="回到今日"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
                     </div>
                 </div>
                 <div class="flex-r gap-3">
-                    <span class="text-xs text-blue-500 font-bold flex-r gap-1.5"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> <span id="report-refresh-text">每 3 秒更新</span></span>
-                    <button onclick="window.forceRefreshAll(event)" class="btn btn-g bg-white border border-gray-300"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新整理</button>
+                    <span class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-sky-100 flex-r gap-1.5"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i> <span id="report-refresh-text">每 3 秒更新</span></span>
+                    <button onclick="window.forceRefreshAll(event)" class="btn btn-g bg-white/90 border border-white/70 text-slate-700"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新整理</button>
                 </div>
             </div>
             
-            <div class="p-6 bg-gray-50 grid grid-cols-2 md:grid-cols-5 gap-5 border-b border-gray-200">
-                <div onclick="window.setReportFilter('all')" id="filter-card-all" class="cursor-pointer bg-white py-6 px-4 rounded-2xl border-2 border-blue-500 shadow-sm hover:shadow-md transition-all flex flex-col items-center justify-center">
+            <div class="grid grid-cols-2 gap-5 border-b border-slate-200/80 bg-transparent p-6 md:grid-cols-5 md:px-8">
+                <div onclick="window.setReportFilter('all')" id="filter-card-all" class="report-metric border-2 border-sky-500">
                     <span class="text-[15px] text-gray-500 font-bold tracking-wide mb-1" id="filter-card-all-title">今日紀錄</span>
                     <span class="text-4xl font-black text-[#1e293b]" id="count-all">0</span>
                 </div>
-                <div onclick="window.setReportFilter('pending')" id="filter-card-pending" class="cursor-pointer bg-white py-6 px-4 rounded-2xl border-2 border-transparent shadow-sm hover:shadow-md transition-all hover:border-blue-200 flex flex-col items-center justify-center">
+                <div onclick="window.setReportFilter('pending')" id="filter-card-pending" class="report-metric border-2 border-transparent hover:border-blue-200">
                     <span class="text-[15px] text-blue-600 font-bold tracking-wide mb-1">待審核</span>
                     <span class="text-4xl font-black text-blue-600" id="count-pending">0</span>
                 </div>
-                <div onclick="window.setReportFilter('active')" id="filter-card-active" class="cursor-pointer bg-white py-6 px-4 rounded-2xl border-2 border-transparent shadow-sm hover:shadow-md transition-all hover:border-yellow-200 flex flex-col items-center justify-center">
+                <div onclick="window.setReportFilter('active')" id="filter-card-active" class="report-metric border-2 border-transparent hover:border-yellow-200">
                     <span class="text-[15px] text-[#d97706] font-bold tracking-wide mb-1">借用中</span>
                     <span class="text-4xl font-black text-[#d97706]" id="count-active">0</span>
                 </div>
-                <div onclick="window.setReportFilter('overdue')" id="filter-card-overdue" class="cursor-pointer bg-white py-6 px-4 rounded-2xl border-2 border-transparent shadow-sm hover:shadow-md transition-all hover:border-red-200 flex flex-col items-center justify-center">
+                <div onclick="window.setReportFilter('overdue')" id="filter-card-overdue" class="report-metric border-2 border-transparent hover:border-red-200">
                     <span class="text-[15px] text-red-600 font-bold tracking-wide mb-1">已逾期</span>
                     <span class="text-4xl font-black text-red-600" id="count-overdue">0</span>
                 </div>
-                <div onclick="window.setReportFilter('reserved')" id="filter-card-reserved" class="cursor-pointer bg-white py-6 px-4 rounded-2xl border-2 border-transparent shadow-sm hover:shadow-md transition-all hover:border-purple-200 flex flex-col items-center justify-center">
+                <div onclick="window.setReportFilter('reserved')" id="filter-card-reserved" class="report-metric border-2 border-transparent hover:border-purple-200">
                     <span class="text-[15px] text-purple-600 font-bold tracking-wide mb-1">預約中</span>
                     <span class="text-4xl font-black text-purple-600" id="count-reserved">0</span>
                 </div>
             </div>
 
-            <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="th">狀態</th><th class="th">借用人</th><th class="th">設備項目</th><th class="th">借用時間</th><th class="th">預計歸還</th><th class="th text-right">操作</th></tr></thead><tbody id="table-body-keys" class="divide-y divide-gray-100"></tbody><tbody id="table-body-equip" class="divide-y divide-gray-100 border-t-4 border-gray-100"></tbody></table></div>
+            <div class="data-table-shell m-6 md:m-8 overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="th">狀態</th><th class="th">借用人</th><th class="th">設備項目</th><th class="th">借用時間</th><th class="th">預計歸還</th><th class="th text-right">操作</th></tr></thead><tbody id="table-body-keys" class="divide-y divide-gray-100"></tbody><tbody id="table-body-equip" class="divide-y divide-gray-100 border-t-4 border-gray-100"></tbody></table></div>
         </div>
 
         <!-- 個人查詢 -->
         <div id="query-tab" class="tab-content p-6 md:p-8 relative min-h-[50vh]">
-            <div class="bg-blue-50 p-6 md:p-8 rounded-2xl mb-8 border border-blue-100 shadow-sm"><form onsubmit="window.executeTeacherQuery(event)" class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end"><div><label class="lbl text-blue-900">教師姓名 *</label><input type="text" id="query-name" required placeholder="例如：王大明" class="inp shadow-sm"></div><div><label class="lbl text-blue-900">教師職號 *</label><input type="text" id="query-emp-id" required placeholder="請輸入職號" class="inp shadow-sm"></div><div><button type="submit" class="btn btn-b w-full py-2.5"><i data-lucide="search" class="w-5 h-5"></i> 查詢借用紀錄</button></div></form></div>
-            <div id="query-results-container" class="hidden"><h3 class="text-xl font-bold mb-4 flex-r gap-2"><i data-lucide="user" class="text-blue-600"></i> <span id="query-result-name-text"></span> 的借用清單</h3><div class="overflow-hidden rounded-2xl border shadow-sm bg-white"><table class="min-w-full divide-y border-collapse text-sm"><thead class="bg-gray-50"><tr><th class="th">狀態</th><th class="th">設備項目</th><th class="th">借用時間</th><th class="th">歸還/預計</th></tr></thead><tbody id="query-table-body" class="divide-y divide-gray-100"></tbody></table></div></div>
-            <button onclick="window.openTeacherSelfEditModal()" type="button" class="fixed bottom-12 right-12 bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform z-40 group"><i data-lucide="user-cog"></i><span class="absolute right-16 bg-gray-800 text-white text-xs px-2.5 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap font-bold shadow-md">資料維護</span></button>
+            <div class="query-shell p-6 md:p-8 mb-8"><form onsubmit="window.executeTeacherQuery(event)" class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end"><div><label class="lbl text-blue-900">教師姓名 *</label><input type="text" id="query-name" required placeholder="例如：王大明" class="inp shadow-sm"></div><div><label class="lbl text-blue-900">教師職號 *</label><input type="text" id="query-emp-id" required placeholder="請輸入職號" class="inp shadow-sm"></div><div><button type="submit" class="btn btn-b w-full py-3"><i data-lucide="search" class="w-5 h-5"></i> 查詢借用紀錄</button></div></form></div>
+            <div class="query-tools flex-wrap items-center gap-3"><span class="section-tag"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Self Service</span><button onclick="window.openTeacherSelfEditModal()" type="button" class="utility-action"><i data-lucide="user-cog" class="w-4 h-4"></i> 個人資料維護</button></div>
+            <div id="query-results-container" class="hidden query-results-stack"><h3 class="text-xl font-bold flex-r gap-2"><i data-lucide="user" class="text-blue-600"></i> <span id="query-result-name-text"></span> 的借用清單</h3><div class="query-results-shell data-table-shell overflow-x-auto"><table class="min-w-full divide-y border-collapse text-sm"><thead class="bg-gray-50"><tr><th class="th">狀態</th><th class="th">設備項目</th><th class="th">借用時間</th><th class="th">歸還/預計</th></tr></thead><tbody id="query-table-body" class="divide-y divide-gray-100"></tbody></table></div></div>
         </div>
 
         <!-- 管理員控制台 -->
         <div id="admin-tab" class="tab-content p-6 md:p-8 text-gray-800">
-            <div class="flex-b mb-6 border-b pb-4"><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><div class="flex-r gap-2"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
+            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
 
-            <div class="flex-r gap-2 mb-8 flex-wrap no-print overflow-visible">
+            <div class="mb-8 flex-r gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap no-print overflow-visible">
                 <button onclick="window.switchAdminSection('dashboard-section')" id="btn-admin-dashboard" class="a-btn a-act">教室借用現況</button>
                 <button onclick="window.switchAdminSection('review-section')" id="btn-admin-review" class="a-btn">借用審核</button>
                 <button onclick="window.switchAdminSection('equip-status-section')" id="btn-admin-equip-status" class="a-btn">目前借用中(清點)</button>
@@ -317,6 +984,7 @@
     window.confirmActionCallbackLocal = null; 
     window.editingExhibitionId = null; 
     window.editingExhibitionOriginalSpace = '';
+    window.editingExhibitionBorrowerUnit = '';
     
     window.currentReportFilter = window.currentReportFilter || 'all'; 
     window.autoRefreshActive = false; 
@@ -377,7 +1045,7 @@
 
     window.formatBorrowerCell = function(bor, id, full=false) {
         let n=bor||'', p='', rt='', cl=''; 
-        const rM=n.match(/ \(負責老師:\s*(.*?)\)/); if(rM){rt=rM[1];n=n.replace(rM[0],'');} 
+        const rM=n.match(/ \((?:負責|負責老師):\s*(.*?)\)/); if(rM){rt=rM[1];n=n.replace(rM[0],'');} 
         const pM=n.match(/ \((.*?)\)$/); if(pM){p=pM[1];n=n.replace(pM[0],'');} 
         const cM=n.match(/^\[(.*?)\]\s*-?\s*/); if(cM){cl=cM[1];n=n.replace(cM[0],'').trim();} n=n||'未填寫';
         let h='<div class="flex-c gap-0.5"><span class="font-bold text-gray-800 text-[15px] leading-snug">' + (cl?cl+' - ':'') + n + '</span>'; 
@@ -445,6 +1113,177 @@
         if (!eq || !rm) return false;
         const ext = window.extractRoomName(eq);
         return ext === rm || ext.startsWith(rm + ' ');
+    };
+
+    window.parseBorrowerMeta = function(borrowerText) {
+        let raw = (borrowerText || '').trim();
+        let unit = '', borrower = '', responsible = '', phone = '';
+        const unitMatch = raw.match(/^\[(.*?)\]\s*/);
+        if(unitMatch) {
+            unit = unitMatch[1].trim();
+            raw = raw.slice(unitMatch[0].length).trim();
+        }
+        const phoneMatch = raw.match(/\(([^()]+)\)\s*$/);
+        if(phoneMatch) {
+            phone = phoneMatch[1].trim();
+            raw = raw.slice(0, phoneMatch.index).trim();
+        }
+        const respMatch = raw.match(/\((?:負責|負責老師):\s*([^()]+)\)\s*$/);
+        if(respMatch) {
+            responsible = respMatch[1].trim();
+            raw = raw.slice(0, respMatch.index).trim();
+        }
+        borrower = raw.trim();
+        return { unit, borrower, responsible, phone };
+    };
+
+    window.normalizeBorrowerInput = function(inputValue, fallbackUnit='') {
+        const raw = (inputValue || '').trim();
+        if(!raw) return { unit: fallbackUnit || '', borrower: '' };
+        const bracketMatch = raw.match(/^\[(.*?)\]\s*(.*)$/);
+        if(bracketMatch) return { unit: bracketMatch[1].trim(), borrower: bracketMatch[2].trim() };
+        const dashParts = raw.split(/\s+-\s+/);
+        if(dashParts.length >= 2) return { unit: dashParts.shift().trim(), borrower: dashParts.join(' - ').trim() };
+        return { unit: fallbackUnit || '', borrower: raw };
+    };
+
+    window.parseExhibitionEquipment = function(eqText) {
+        const raw = eqText || '';
+        const match = raw.match(/\[展覽空間\]\s*(.*?)\s*-\s*(.*?)\s*\((\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})\)/);
+        if(match) {
+            return {
+                space: match[1].trim(),
+                name: match[2].trim(),
+                start: match[3],
+                end: match[4]
+            };
+        }
+        return {
+            space: window.extractRoomName(raw),
+            name: raw.replace('[展覽空間]', '').trim(),
+            start: '',
+            end: ''
+        };
+    };
+
+    window.parseClassroomReservation = function(eqText) {
+        const raw = eqText || '';
+        const match = raw.match(/\[預借教室\]\s*(.*?)\s*\((\d{4}-\d{2}-\d{2})\s(\d{2}:\d{2})~(\d{2}:\d{2})\)/);
+        if(!match) return { room: window.extractRoomName(raw), date: '', start: '', end: '' };
+        return {
+            room: match[1].trim(),
+            date: match[2],
+            start: match[3],
+            end: match[4]
+        };
+    };
+
+    window.checkScheduleConflict = function(roomName, dateValue, startTime, endTime, excludeId=null) {
+        if(!roomName || !dateValue || !startTime || !endTime) return false;
+        const targetStart = new Date(dateValue.replace(/-/g, '/') + ' ' + startTime + ':00');
+        const targetEnd = new Date(dateValue.replace(/-/g, '/') + ' ' + endTime + ':00');
+        return (window.windowData || window.mockDatabase || []).some(item => {
+            const id = String(window.getId(item));
+            if(excludeId && id === String(excludeId)) return false;
+            if(window.deletedIds && window.deletedIds.has(id)) return false;
+            const status = window.getStatus(item);
+            const eq = window.getEquip(item);
+            if(!eq.includes('[預借教室]')) return false;
+            if(status.includes('已歸還') || status === '已拒絕' || status === '已刪除') return false;
+            const parsed = window.parseClassroomReservation(eq);
+            if(parsed.room !== roomName || parsed.date !== dateValue || !parsed.start || !parsed.end) return false;
+            const existingStart = new Date(parsed.date.replace(/-/g, '/') + ' ' + parsed.start + ':00');
+            const existingEnd = new Date(parsed.date.replace(/-/g, '/') + ' ' + parsed.end + ':00');
+            return targetStart < existingEnd && targetEnd > existingStart;
+        });
+    };
+
+    window.checkExhibitionConflict = function(spaceName, startDate, endDate, excludeId=null) {
+        if(!spaceName || !startDate || !endDate) return false;
+        const targetStart = new Date(startDate + ' 00:00:00');
+        const targetEnd = new Date(endDate + ' 23:59:59');
+        return (window.windowData || window.mockDatabase || []).some(item => {
+            const id = String(window.getId(item));
+            if(excludeId && id === String(excludeId)) return false;
+            if(window.deletedIds && window.deletedIds.has(id)) return false;
+            const status = window.getStatus(item);
+            const eq = window.getEquip(item);
+            if(!eq.includes('[展覽空間]')) return false;
+            if(status.includes('已歸還') || status === '已拒絕' || status === '已刪除') return false;
+            const parsed = window.parseExhibitionEquipment(eq);
+            if(parsed.space !== spaceName || !parsed.start || !parsed.end) return false;
+            const existingStart = new Date(parsed.start + ' 00:00:00');
+            const existingEnd = new Date(parsed.end + ' 23:59:59');
+            return targetStart <= existingEnd && targetEnd >= existingStart;
+        });
+    };
+
+    window.applyBorrowRecordUpdate = function(id, updates) {
+        [window.windowData, window.mockDatabase].forEach(source => {
+            if(!Array.isArray(source)) return;
+            const item = source.find(record => String(window.getId(record)) === String(id));
+            if(!item) return;
+            if(updates.borrower !== undefined) {
+                item.borrower = updates.borrower;
+                item.借用人 = updates.borrower;
+            }
+            if(updates.equipment !== undefined) {
+                item.equipment = updates.equipment;
+                item.設備名稱 = updates.equipment;
+            }
+            if(updates.expectedReturnDate !== undefined) {
+                item.expectedReturnDate = updates.expectedReturnDate;
+                item.預計歸還日期 = updates.expectedReturnDate;
+            }
+            if(updates.status !== undefined) {
+                item.status = updates.status;
+                item.狀態 = updates.status;
+            }
+        });
+    };
+
+    window.refreshBorrowViews = function() {
+        const data = window.windowData || window.mockDatabase || [];
+        window.renderTable(data);
+        if($('admin-tab') && $('admin-tab').classList.contains('active')) {
+            if(window.currentAdminRole !== 'exhibition') {
+                window.renderAdminDashboard();
+                window.renderAdminAbnormal();
+            }
+            window.renderAdminReview();
+            window.renderAdminEquipStatus();
+        }
+        if($('exhibition-borrow-section') && !$('exhibition-borrow-section').classList.contains('hidden')) {
+            window.renderExhibitionSchedule();
+        }
+        if($('query-results-container') && !$('query-results-container').classList.contains('hidden')) {
+            const name = $('query-name') ? $('query-name').value.trim() : '';
+            const empId = $('query-emp-id') ? $('query-emp-id').value.trim() : '';
+            if(name && empId) window.executeTeacherQuery({ preventDefault() {}, target: $('query-tab') });
+        }
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.syncEditedExhibitionToCloud = async function(gasUrl, payload) {
+        const actions = ['editExhibition', 'updateBorrow', 'update'];
+        for (const action of actions) {
+            try {
+                const res = await fetch(gasUrl, {
+                    method: 'POST',
+                    body: JSON.stringify({ ...payload, action }),
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+                });
+                let ok = res.ok;
+                try {
+                    const result = await res.json();
+                    if(result && typeof result.status !== 'undefined') ok = result.status === 'success';
+                } catch(err) {}
+                if(ok) return true;
+            } catch(err) {
+                console.warn('展覽改期同步失敗:', action, err);
+            }
+        }
+        return false;
     };
 
     // --- 公告處理 ---
@@ -1158,6 +1997,85 @@
     window.openEditStatusModal = function(id) { window.currentEditStatusId=id; const i=(window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(id)); if(!i)return; const st=window.getStatus(i), sel=$('edit-status-select'); if(Array.from(sel.options).map(o=>o.value).includes(st)) {sel.value=st;hide('custom-status-container');} else {sel.value='custom';$('edit-status-custom').value=st;show('custom-status-container');} show('edit-status-modal'); };
     window.syncCustomStatus = function() { if($('edit-status-select').value==='custom') show('custom-status-container'); else hide('custom-status-container'); };
     window.saveRecordStatus = function() { const s=$('edit-status-select').value==='custom'?$('edit-status-custom').value.trim():$('edit-status-select').value; if(!s) return window.showToast('輸入狀態','error'); window.executeReturn(window.currentEditStatusId,s); hide('edit-status-modal'); };
+
+    window.openEditExhibitionModal = function(id) {
+        const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
+        if(!target) return window.showToast('找不到展覽資料', 'error');
+        const parsedEquipment = window.parseExhibitionEquipment(window.getEquip(target));
+        const parsedBorrower = window.parseBorrowerMeta(window.getBorrower(target));
+        window.editingExhibitionId = String(id);
+        window.editingExhibitionOriginalSpace = parsedEquipment.space || '';
+        window.editingExhibitionBorrowerUnit = parsedBorrower.unit || '';
+        $('edit-exhibition-name').value = parsedEquipment.name || '';
+        $('edit-exhibition-borrower').value = parsedBorrower.unit ? parsedBorrower.unit + ' - ' + parsedBorrower.borrower : parsedBorrower.borrower;
+        $('edit-exhibition-resp').value = parsedBorrower.responsible || '';
+        $('edit-exhibition-phone').value = parsedBorrower.phone || '';
+        $('edit-exhibition-start').value = parsedEquipment.start || '';
+        $('edit-exhibition-end').value = parsedEquipment.end || '';
+        show('edit-exhibition-modal');
+        setTimeout(() => { if($('edit-exhibition-name')) $('edit-exhibition-name').focus(); }, 80);
+    };
+
+    window.confirmEditExhibition = async function() {
+        const id = window.editingExhibitionId;
+        const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
+        if(!id || !target) return window.showToast('找不到要修改的展覽', 'error');
+
+        const exhibitionName = $('edit-exhibition-name').value.trim();
+        const borrowerInput = $('edit-exhibition-borrower').value.trim();
+        const responsible = $('edit-exhibition-resp').value.trim();
+        const phone = $('edit-exhibition-phone').value.trim();
+        const startDate = $('edit-exhibition-start').value;
+        const endDate = $('edit-exhibition-end').value;
+        const spaceName = window.editingExhibitionOriginalSpace || window.parseExhibitionEquipment(window.getEquip(target)).space;
+        const currentStatus = window.getStatus(target);
+
+        if(!exhibitionName || !borrowerInput || !startDate || !endDate) return window.showToast('請填寫完整', 'error');
+        if(!spaceName) return window.showToast('找不到展覽空間', 'error');
+        if(startDate > endDate) return window.showToast('結束日期錯誤', 'error');
+        if(window.checkExhibitionConflict(spaceName, startDate, endDate, id)) return window.showToast('該時段已有其他展覽或活動安排！', 'error');
+
+        const normalizedBorrower = window.normalizeBorrowerInput(borrowerInput, window.editingExhibitionBorrowerUnit || '');
+        if(!normalizedBorrower.borrower) return window.showToast('請填寫借用人/單位', 'error');
+
+        let borrowerText = (normalizedBorrower.unit ? '[' + normalizedBorrower.unit + '] ' : '') + normalizedBorrower.borrower;
+        if(responsible) borrowerText += ' (負責: ' + responsible + ')';
+        if(phone) borrowerText += ' (' + phone + ')';
+
+        const equipmentText = '[展覽空間] ' + spaceName + ' - ' + exhibitionName + ' (' + startDate + ' ~ ' + endDate + ')';
+        const payload = {
+            id,
+            ID: id,
+            borrower: borrowerText,
+            借用人: borrowerText,
+            equipment: equipmentText,
+            設備名稱: equipmentText,
+            expectedReturnDate: endDate,
+            預計歸還日期: endDate,
+            status: currentStatus,
+            狀態: currentStatus
+        };
+
+        window.applyBorrowRecordUpdate(id, payload);
+        hide('edit-exhibition-modal');
+        window.editingExhibitionId = null;
+        window.refreshBorrowViews();
+
+        const gasUrl = $('gas-url') ? $('gas-url').value.trim() : '';
+        if(!gasUrl.startsWith('http')) {
+            window.showToast('改期成功');
+            return;
+        }
+
+        const synced = await window.syncEditedExhibitionToCloud(gasUrl, payload);
+        if(synced) {
+            window.showToast('改期成功');
+            setTimeout(() => { window.fetchData(true); }, 500);
+            return;
+        }
+
+        window.showToast('畫面已更新，但雲端同步失敗', 'error');
+    };
 
     window.openTeacherSelfEditModal = function() { $('self-teacher-name').value='';$('self-teacher-emp-id').value='';$('self-teacher-position').value='專任';$('self-teacher-phone').value='';$('self-teacher-email').value=''; show('teacher-self-edit-modal'); };
     window.autofillSelfData = function() { const n=$('self-teacher-name').value.trim(), id=$('self-teacher-emp-id').value.trim(); if(n&&id){ const t=(window.teacherList||[]).find(x=>x.name===n&&x.empId===id); if(t){ if(!$('self-teacher-phone').value)$('self-teacher-phone').value=t.phone||''; if(!$('self-teacher-email').value)$('self-teacher-email').value=t.email||''; $('self-teacher-position').value=t.position||'專任'; } } };
