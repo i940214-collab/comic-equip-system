@@ -1051,12 +1051,16 @@ body::before {
     text-align: center;
 }
 .teacher-schedule-slot.filled {
-    justify-content: flex-start;
-    align-items: flex-start;
+    justify-content: center;
+    align-items: center;
     border-style: solid;
     border-color: rgba(191, 219, 254, 0.9);
     background: linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.96));
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+}
+.teacher-schedule-slot.filled > div {
+    width: 100%;
+    text-align: center;
 }
 .teacher-schedule-slot.empty {
     color: #cbd5e1;
@@ -1068,6 +1072,7 @@ body::before {
     font-weight: 900;
     color: #1e3a8a;
     line-height: 1.45;
+    text-align: center;
 }
 .teacher-schedule-location {
     margin-top: 0.35rem;
@@ -1075,6 +1080,7 @@ body::before {
     font-weight: 700;
     color: #64748b;
     line-height: 1.45;
+    text-align: center;
 }
 .teacher-schedule-admin-meta {
     display: grid;
@@ -2037,7 +2043,7 @@ body::before {
                 const slotClass = entry ? 'teacher-schedule-slot filled' : 'teacher-schedule-slot empty';
                 let slotHtml = '<span>尚未排課</span>';
                 if(entry) {
-                    slotHtml = '<div class="w-full text-left"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
+                    slotHtml = '<div class="w-full text-center"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
                 }
                 const actionAttrs = editable
                     ? ' data-schedule-key="' + window.escapeHtml(scheduleKey) + '" data-day="' + window.escapeHtml(day.id) + '" data-period-id="' + window.escapeHtml(period.id) + '" onclick="window.openTeacherScheduleEditor(this)"'
@@ -2068,7 +2074,7 @@ body::before {
                 const slotClass = entry ? 'teacher-schedule-slot filled' : 'teacher-schedule-slot empty';
                 let slotHtml = '<span>尚未排課</span>';
                 if(entry) {
-                    slotHtml = '<div class="w-full text-left"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
+                    slotHtml = '<div class="w-full text-center"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
                 }
                 html += '<td class="teacher-schedule-cell"><div class="' + slotClass + '">' + slotHtml + '</div></td>';
             });
