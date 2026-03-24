@@ -497,6 +497,20 @@ body.approval-route-mode #teacher-classroom-approval-close {
     font-weight: 700;
     color: #64748b;
 }
+.teacher-approval-status-shell {
+    border-radius: 1.6rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(255,255,255,0.96);
+    padding: 1.05rem 1.1rem;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+}
+.teacher-approval-status-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+}
 .teacher-approval-input-shell {
     border-radius: 1.6rem;
     border: 1px solid rgba(226, 232, 240, 0.92);
@@ -4313,15 +4327,14 @@ try {
                             '<h4 class="mt-4 text-[1.45rem] font-black leading-tight text-slate-900 sm:text-[1.8rem]">' + (lockedMode ? '教室借用審核頁面' : '教室借用確認') + '</h4>' +
                             '<p class="mt-2 text-sm font-medium leading-7 text-slate-500">老師確認後會直接同步更新原申請，這頁不需要再切回系統首頁。</p>' +
                         '</div>' +
-                        '<span class="teacher-approval-status-pill ' + statusClass + '">' + window.escapeHtml(statusText) + '</span>' +
                     '</div>' +
-                    stateHtml +
                     '<div class="teacher-approval-grid">' +
                         '<div class="teacher-approval-field"><div class="teacher-approval-label">學生 / 單位</div><div class="teacher-approval-value">' + window.escapeHtml((borrowerMeta.unit ? borrowerMeta.unit + ' - ' : '') + (borrowerMeta.borrower || '未填寫')) + '</div></div>' +
                         '<div class="teacher-approval-field"><div class="teacher-approval-label">負責老師</div><div class="teacher-approval-value">' + window.escapeHtml(borrowerMeta.responsible || '未指定') + '</div></div>' +
                         '<div class="teacher-approval-field"><div class="teacher-approval-label">借用教室</div><div class="teacher-approval-value">' + window.escapeHtml(classroomMeta.room || '未指定') + '</div></div>' +
                         '<div class="teacher-approval-field"><div class="teacher-approval-label">借用日期 / 時段</div><div class="teacher-approval-value">' + window.escapeHtml(classroomMeta.date ? classroomMeta.date.replace(/-/g, '/') : '未指定') + '</div><div class="teacher-approval-subvalue">' + window.escapeHtml(classroomMeta.start && classroomMeta.end ? (classroomMeta.start + ' - ' + classroomMeta.end) : '時間未設定') + '</div></div>' +
                     '</div>' +
+                    '<div class="teacher-approval-status-shell"><div class="teacher-approval-status-head"><div class="teacher-approval-label !text-slate-500">目前審核狀態</div><span class="teacher-approval-status-pill ' + statusClass + '">' + window.escapeHtml(statusText) + '</span></div><div class="mt-4">' + stateHtml + '</div></div>' +
                     (isPending && window.isTeacherApprovalClassroomRequest(record)
                         ? '<div class="teacher-approval-input-shell"><div class="lbl text-slate-700 mb-0">教師回覆資料</div><div class="teacher-approval-form-grid"><div><label class="lbl text-slate-500 mb-0">回覆教師姓名</label><input type="text" id="teacher-classroom-approval-name" class="inp mt-3" value="' + window.escapeHtml(suggestedTeacherName) + '" placeholder="請輸入老師姓名"></div><div><label class="lbl text-slate-500 mb-0">教師職號</label><input type="text" id="teacher-classroom-approval-emp-id" class="inp mt-3 font-mono" value="' + window.escapeHtml(suggestedTeacherEmpId) + '" placeholder="請輸入教師職號"></div></div><p class="teacher-approval-helper">請填寫姓名與職號後再送出，系統會直接更新原申請狀態，不需要再回首頁操作。</p></div>'
                         : ''
