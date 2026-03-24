@@ -2176,6 +2176,22 @@ try {
     window.getRetTime = i => i?.returningTime || i?.歸還時間 || ''; 
     window.getQty = i => i?.quantity || i?.數量 || 1;
     window.getRequestRef = i => i?.requestRef || i?.申請參照 || '';
+    window.extractTeacherApprovalNameFromStatus = function(statusText) {
+        const match = String(statusText || '').match(/教師同意:\s*([^()]+)/);
+        return match ? match[1].trim() : '';
+    };
+    window.isTeacherApprovalWaiting = function(item) {
+        const st = window.getStatus(item);
+        return window.isTeacherApprovalClassroomRequest(item) && (st === '待審核' || st === '待老師回覆');
+    };
+    window.isAdminApprovalWaiting = function(item) {
+        const st = window.getStatus(item);
+        return window.isTeacherApprovalClassroomRequest(item) && st.startsWith('待管理員審核');
+    };
+    window.isPendingReviewStatus = function(item) {
+        const st = window.getStatus(item);
+        return st === '待審核' || st === '待老師回覆' || st.startsWith('待管理員審核');
+    };
 
     // --- 核心格式化 ---
     window.getLocalDateString = function() { 
@@ -2236,7 +2252,7 @@ try {
         const eq=window.getEquip(i), st=window.getStatus(i);
         if(st.includes('已歸還') || st.includes('已拒絕') || st.includes('刪除')) return false;
         if(st.includes('預約')) return true;
-        if(eq && (eq.includes('[預借教室]')||eq.includes('[展覽空間]')) && (st.startsWith('借用中')||st.startsWith('剩遙控器')||st==='待審核')){
+        if(eq && (eq.includes('[預借教室]')||eq.includes('[展覽空間]')) && (st.startsWith('借用中')||st.startsWith('剩遙控器')||window.isPendingReviewStatus(i))){
             const m=eq.match(/\((\d{4}-\d{2}-\d{2})\s(\d{2}:\d{2})~(\d{2}:\d{2})\)/)||eq.match(/\((\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})\)/);
             if(m) return new Date() < new Date(m[1].replace(/-/g, '/') + ' ' + (m[2]&&m[2].includes(':')?m[2]+':00':'00:00:00'));
         } return false;
@@ -2244,7 +2260,7 @@ try {
 
     window.checkIsOverdue = function(i) {
         const exp=window.getExpDate(i), st=window.getStatus(i);
-        if(!exp || st.includes('已歸還') || st.includes('已拒絕') || st.includes('刪除') || st === '待審核') return false;
+        if(!exp || st.includes('已歸還') || st.includes('已拒絕') || st.includes('刪除') || window.isPendingReviewStatus(i)) return false;
         if(window.isUpcoming(i)) return false;
         const t=new Date(); t.setHours(0,0,0,0); const d=new Date(exp); d.setHours(0,0,0,0); return t>d;
     };
@@ -2252,6 +2268,8 @@ try {
     window.getStatusBadge = function(i) { 
         const ov=window.checkIsOverdue(i), st=window.getStatus(i), bc="px-3 py-1.5 text-[12px] font-bold rounded-full inline-block text-center whitespace-nowrap"; 
         if(ov) return '<span class="' + bc + ' bg-red-100 text-red-600">已逾期</span>'; 
+        if(window.isTeacherApprovalWaiting(i)) return '<span class="' + bc + ' bg-blue-100 text-blue-600">待老師回覆</span>';
+        if(window.isAdminApprovalWaiting(i)) return '<span class="' + bc + ' bg-indigo-100 text-indigo-600">待管理員審核</span>';
         if(st==='待審核') return '<span class="' + bc + ' bg-blue-100 text-blue-600">待審核</span>'; 
         if(window.isUpcoming(i) || st.includes('預約')) return '<span class="' + bc + ' bg-purple-100 text-purple-600">已核准預約</span>'; 
         if(st.startsWith('借用中')) return '<span class="' + bc + ' bg-yellow-100 text-yellow-700">' + st + '</span>'; 
@@ -4208,6 +4226,23 @@ try {
         }
     };
 
+    window.openClassroomApprovalQrById = function(recordId) {
+        const record = window.findRecordById(recordId);
+        if(!record) return window.showToast('找不到這筆申請，請重新整理', 'error');
+        window.openClassroomApprovalQrModal(record);
+    };
+
+    window.copyClassroomApprovalLinkById = async function(recordId) {
+        const link = window.buildClassroomApprovalLink(recordId);
+        if(!link) return window.showToast('目前沒有可複製的連結', 'error');
+        try {
+            await navigator.clipboard.writeText(link);
+            window.showToast('老師確認連結已複製');
+        } catch(err) {
+            window.showToast('無法直接複製，請改用 QR 顯示', 'error');
+        }
+    };
+
     window.openClassroomApprovalQrModal = function(record) {
         if(!record) return;
         const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(record));
@@ -4289,13 +4324,17 @@ try {
         const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(record));
         const classroomMeta = window.parseClassroomReservation(window.getEquip(record));
         const status = window.getStatus(record);
-        const isPending = status === '待審核';
+        const isPending = window.isTeacherApprovalWaiting(record);
+        const isAdminPending = window.isAdminApprovalWaiting(record);
         const suggestedTeacherName = borrowerMeta.responsible || '';
         const matchedTeacher = (window.teacherList || []).find(teacher => (teacher.name || '').trim() === suggestedTeacherName);
         let statusClass = 'other', statusText = status || '狀態未設定';
         if(isPending) {
             statusClass = 'pending';
             statusText = '待老師回覆';
+        } else if(isAdminPending) {
+            statusClass = 'pending';
+            statusText = '待管理員審核';
         } else if(status.startsWith('借用中')) {
             statusClass = 'approved';
             statusText = '已同意借用';
@@ -4309,6 +4348,8 @@ try {
             stateHtml = '<div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">這筆申請沒有設定負責老師，因此不適用 QR 老師確認流程。</div>';
         } else if(status === '已拒絕') {
             stateHtml = '<div class="teacher-approval-notice !border-red-100 !bg-red-50 !text-red-700">這筆教室借用申請已被回覆為不同意。</div>';
+        } else if(isAdminPending) {
+            stateHtml = '<div class="teacher-approval-notice !border-indigo-100 !bg-indigo-50 !text-indigo-700">負責老師已完成確認，這筆申請正在等待系統管理員最終核准。</div>';
         } else if(status.startsWith('借用中')) {
             stateHtml = '<div class="teacher-approval-notice !border-emerald-100 !bg-emerald-50 !text-emerald-700">這筆教室借用申請已完成老師確認，系統狀態已同步更新。</div>';
         } else {
@@ -4385,7 +4426,7 @@ try {
         if(!matchedTeacher || !String(matchedTeacher.empId || '').trim()) return window.showToast('系統找不到這位負責老師的職號，請聯絡系辦', 'error');
         if(teacherEmpId.trim().toLowerCase() !== String(matchedTeacher.empId || '').trim().toLowerCase()) return window.showToast('教師職號驗證失敗，請確認後再送出', 'error');
         if(teacherName.replace(/\s+/g, '') !== String(matchedTeacher.name || '').replace(/\s+/g, '')) return window.showToast('回覆教師姓名需與負責老師一致', 'error');
-        const nextStatus = decision === 'approve' ? ('借用中 (教師同意: ' + (matchedTeacher.name || teacherName) + ')') : '已拒絕';
+        const nextStatus = decision === 'approve' ? ('待管理員審核 (教師同意: ' + (matchedTeacher.name || teacherName) + ')') : '已拒絕';
         await window.executeReturn(approvalId, nextStatus, decision === 'approve' ? '正在送出同意結果，請稍候...' : '正在送出不同意結果，請稍候...');
         const latestRecord = window.findRecordById(approvalId) || record;
         window.renderTeacherClassroomApprovalModal(latestRecord);
@@ -4849,14 +4890,14 @@ try {
             let inRange=true; if(filterSVal&&rawDate<filterSVal)inRange=false; if(filterEVal&&rawDate>filterEVal)inRange=false;
             
             if(inRange) { stats.all++; }
-            if(st==='待審核') stats.pending++; 
+            if(window.isPendingReviewStatus(item)) stats.pending++; 
             else if(st.includes('預約') || isUp) stats.reserved++; 
             else if(st.startsWith('借用中')) stats.active++; 
             
             if(window.checkIsOverdue(item)) stats.overdue++;
 
             if(window.currentReportFilter!=='all'){ 
-                if(window.currentReportFilter==='pending'&&st!=='待審核')return; 
+                if(window.currentReportFilter==='pending'&&!window.isPendingReviewStatus(item))return; 
                 if(window.currentReportFilter==='active'&&(!st.startsWith('借用中') || st.includes('預約') || isUp))return; 
                 if(window.currentReportFilter==='overdue'&&!window.checkIsOverdue(item))return; 
                 if(window.currentReportFilter==='abnormal'&&!st.includes('(異常:'))return; 
@@ -4864,7 +4905,9 @@ try {
             } else if(!inRange) return;
             
             let act=''; const rT=window.getRetTime(item); 
-            if(st==='待審核'||isUp||st.includes('預約')) act='<span class="text-xs text-gray-400 font-bold">-</span>'; 
+            if(window.isTeacherApprovalWaiting(item)) act='<div class="flex flex-col gap-1.5 w-28 ml-auto"><button onclick="window.openClassroomApprovalQrById(\'' + window.getId(item) + '\')" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-2 py-1.5 rounded-lg text-xs font-bold w-full transition-colors">重新顯示 QR</button><button onclick="window.copyClassroomApprovalLinkById(\'' + window.getId(item) + '\')" class="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-2 py-1.5 rounded-lg text-xs font-bold w-full transition-colors">複製連結</button></div>';
+            else if(window.isAdminApprovalWaiting(item)) act='<span class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">待系辦審核</span>';
+            else if(window.isPendingReviewStatus(item)||isUp||st.includes('預約')) act='<span class="text-xs text-gray-400 font-bold">-</span>'; 
             else if(rT||st.includes('已歸還')||st==='已拒絕') act=window.formatTimeSplit(rT); 
             else act='<button onclick="window.handleReturnClick(\'' + window.getId(item) + '\')" class="bg-white border-2 border-blue-500 text-blue-600 hover:bg-blue-50 px-4 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors inline-flex">歸還</button>';
             
@@ -4891,13 +4934,13 @@ try {
             if(bMap[b].length===0) return; 
             fullHtml += '<div class="flex-c"><div class="mb-6 text-center font-black text-gray-800 text-xl tracking-wide">' + (b==='Other'?'其他空間':b+'棟大樓') + '</div><div class="flex-c gap-5">';
             bMap[b].forEach(rm=>{
-                const actR = data.filter(d => { if(window.deletedIds && window.deletedIds.has(String(window.getId(d)))) return false; const eq=window.getEquip(d), st=window.getStatus(d); return window.isRoomMatch(eq, rm) && (st.startsWith('借用中') || st==='待審核' || st.startsWith('剩遙控器') || window.isUpcoming(d)) && st!=='已刪除'; });
+                const actR = data.filter(d => { if(window.deletedIds && window.deletedIds.has(String(window.getId(d)))) return false; const eq=window.getEquip(d), st=window.getStatus(d); return window.isRoomMatch(eq, rm) && (st.startsWith('借用中') || window.isPendingReviewStatus(d) || st.startsWith('剩遙控器') || window.isUpcoming(d)) && st!=='已刪除'; });
                 const isAb = data.find(d => { if(window.deletedIds && window.deletedIds.has(String(window.getId(d)))) return false; return window.isRoomMatch(window.getEquip(d), rm) && window.getStatus(d).includes('(異常:') && window.getStatus(d)!=='已刪除'; });
                 let cUse=null, up=[], pen=[]; const now=new Date();
                 
                 actR.forEach(r => { 
                     const st = window.getStatus(r), t = window.getTime(r), eq = window.getEquip(r); 
-                    let isP = st==='待審核', isA = st.startsWith('借用中') || st.startsWith('剩遙控器'); 
+                    let isP = window.isPendingReviewStatus(r), isA = st.startsWith('借用中') || st.startsWith('剩遙控器'); 
                     let tTxt = t.split(' ')[1] || t;
                     let isFuture = window.isUpcoming(r);
                     
@@ -4986,17 +5029,20 @@ try {
 
     window.renderAdminReview = function(){ 
         const tb=$('admin-review-body'); if(!tb)return; 
-        const data=(window.windowData||window.mockDatabase||[]).filter(i=>!(window.deletedIds && window.deletedIds.has(String(window.getId(i))))&&window.getStatus(i)==='待審核'&&(window.currentAdminRole!=='exhibition'||window.getEquip(i).includes('[展覽空間]'))); 
+        const data=(window.windowData||window.mockDatabase||[]).filter(i=>!(window.deletedIds && window.deletedIds.has(String(window.getId(i))))&&window.isPendingReviewStatus(i)&&(window.currentAdminRole!=='exhibition'||window.getEquip(i).includes('[展覽空間]'))); 
         if(data.length===0){tb.innerHTML='<tr><td colspan="3" class="p-6 text-center text-gray-400 font-bold">目前無待審核</td></tr>';return;} 
         tb.innerHTML=''; 
         data.forEach(i=>{ 
             const id=window.getId(i), eq=window.getEquip(i), borrowerMeta=window.parseBorrowerMeta(window.getBorrower(i)); 
-            const waitsTeacherReply = eq.includes('[預借教室]') && borrowerMeta.responsible;
+            const waitsTeacherReply = window.isTeacherApprovalWaiting(i);
+            const waitsAdminDecision = window.isAdminApprovalWaiting(i);
             let eB=''; 
             if(eq.includes('[展覽空間]')) eB='<button onclick="window.openEditExhibitionModal(\'' + id + '\')" class="bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">改期</button>'; 
             const reviewActions = waitsTeacherReply
-                ? '<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 mr-1.5">等待 ' + window.escapeHtml(borrowerMeta.responsible) + ' QR 回覆</span><button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>'
-                : '<button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button> <button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>';
+                ? '<button onclick="window.openClassroomApprovalQrById(\'' + id + '\')" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">重新顯示 QR</button><button onclick="window.copyClassroomApprovalLinkById(\'' + id + '\')" class="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">複製連結</button><span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 mr-1.5">等待 ' + window.escapeHtml(borrowerMeta.responsible) + ' QR 回覆</span><button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>'
+                : waitsAdminDecision
+                    ? '<span class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 mr-1.5">老師已同意，等待系辦核准</span><button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button><button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>'
+                    : '<button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button> <button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>';
             tb.innerHTML+='<tr class="hover:bg-gray-50 transition-colors border-b"><td class="p-3">' + window.formatBorrowerCell(window.getBorrower(i),id) + '</td><td class="p-3">' + window.formatEquipmentCell(eq,window.getQty(i)) + '</td><td class="p-3 text-right whitespace-nowrap">' + eB + reviewActions + '</td></tr>'; 
         }); 
         if (window.lucide) window.lucide.createIcons(); 
@@ -5204,7 +5250,7 @@ try {
         const summary = {
             active: items.filter(i => !window.isUpcoming(i) && (window.getStatus(i).startsWith('借用中') || window.getStatus(i).startsWith('剩遙控器'))).length,
             upcoming: items.filter(i => window.isUpcoming(i)).length,
-            pending: items.filter(i => window.getStatus(i).includes('待審核')).length
+            pending: items.filter(i => window.isPendingReviewStatus(i)).length
         };
 
         let detailsHtml = '';
@@ -5230,7 +5276,7 @@ try {
                     b = 'bg-purple-100 border-purple-200 text-purple-800';
                 } else if(st.startsWith('借用中') || st.startsWith('剩遙控器')) {
                     b = 'bg-[#fefce8] border-[#fef08a] text-[#a16207]';
-                } else if(st.includes('待審核')) {
+                } else if(window.isPendingReviewStatus(i)) {
                     b = 'bg-blue-100 border-blue-200 text-blue-800';
                 } else if(window.checkIsOverdue(i)) {
                     b = 'bg-red-100 border-red-200 text-red-800';
@@ -5353,7 +5399,14 @@ try {
     window.confirmAdvancedReturn = function() { let s='已歸還'; const rc=document.querySelector('input[name="remote_status"]:checked'), ac=document.querySelector('input[name="abnormal_status"]:checked'); if(rc&&rc.value==='missing') s='剩遙控器'; if(ac&&ac.value==='yes') s+=` (異常: ${$('return-abnormal-desc').value.trim()||'待查'})`; window.executeReturn(window.currentReturnId,s); hide('advanced-return-modal'); };
 
     window.openApproveModal = function(id) { window.currentApproveId=id; $('approve-admin-name').value=''; show('approve-modal'); setTimeout(()=>$('approve-admin-name').focus(),100); };
-    window.confirmApprove = function() { window.executeReturn(window.currentApproveId, `借用中 (審核: ${$('approve-admin-name').value.trim()||'管理員'})`); hide('approve-modal'); };
+    window.confirmApprove = function() {
+        const adminName = $('approve-admin-name').value.trim() || '管理員';
+        const target = (window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(window.currentApproveId));
+        const teacherApprovedBy = target ? window.extractTeacherApprovalNameFromStatus(window.getStatus(target)) : '';
+        const nextStatus = teacherApprovedBy ? `借用中 (教師同意: ${teacherApprovedBy} / 審核: ${adminName})` : `借用中 (審核: ${adminName})`;
+        window.executeReturn(window.currentApproveId, nextStatus);
+        hide('approve-modal');
+    };
 
     window.openEditStatusModal = function(id) { window.currentEditStatusId=id; const i=(window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(id)); if(!i)return; const st=window.getStatus(i), sel=$('edit-status-select'); if(Array.from(sel.options).map(o=>o.value).includes(st)) {sel.value=st;hide('custom-status-container');} else {sel.value='custom';$('edit-status-custom').value=st;show('custom-status-container');} show('edit-status-modal'); };
     window.syncCustomStatus = function() { if($('edit-status-select').value==='custom') show('custom-status-container'); else hide('custom-status-container'); };
@@ -5462,7 +5515,8 @@ try {
             const recordId = window.makeBorrowRequestRef('record');
             const submitTime = new Date().toLocaleString('zh-TW',{hour12:false});
             const needsTeacherQrApproval = type === 'classroom' && hasResponsibleTeacher;
-            const payload={ action:'borrow', id:recordId, ID:recordId, requestRef, 申請參照:requestRef, borrower:bor, 借用人:bor, equipment:eq, 設備名稱:eq, quantity:qty, 數量:qty, expectedReturnDate:exDtN&&exDtN.value?exDtN.value:'', 預計歸還日期:exDtN&&exDtN.value?exDtN.value:'', status:type==='key'?'借用中':'待審核', 狀態:type==='key'?'借用中':'待審核', time:submitTime, 借用時間:submitTime };
+            const initialStatus = type==='key' ? '借用中' : (needsTeacherQrApproval ? '待老師回覆' : '待審核');
+            const payload={ action:'borrow', id:recordId, ID:recordId, requestRef, 申請參照:requestRef, borrower:bor, 借用人:bor, equipment:eq, 設備名稱:eq, quantity:qty, 數量:qty, expectedReturnDate:exDtN&&exDtN.value?exDtN.value:'', 預計歸還日期:exDtN&&exDtN.value?exDtN.value:'', status:initialStatus, 狀態:initialStatus, time:submitTime, 借用時間:submitTime };
             const signature = {
                 requestRef,
                 borrower: payload.borrower,
