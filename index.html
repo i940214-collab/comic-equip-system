@@ -406,8 +406,15 @@ body.approval-route-mode::before {
     opacity: 0.08;
     mask-image: radial-gradient(circle at top center, rgba(0,0,0,0.5), transparent 72%);
 }
-body.approval-route-mode .page-shell,
 body.approval-route-mode #floating-teacher-schedule-btn {
+    display: none !important;
+}
+body.approval-route-mode .page-shell {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+body.approval-route-mode .page-shell > :not(#teacher-classroom-approval-modal):not(#global-loading-overlay):not(#toast) {
     display: none !important;
 }
 body.approval-route-mode .mod-w:not(#teacher-classroom-approval-modal) {
