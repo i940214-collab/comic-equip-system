@@ -10,6 +10,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 tailwind.config = {
     theme: {
@@ -170,18 +172,44 @@ body {
 .t-btn {
     flex: 1 1 0%;
     min-width: 160px;
-    padding: 0.95rem 1.25rem;
-    color: #6e6e73;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 1.25rem;
+    padding: 1rem 1.35rem;
+    color: #64748b;
+    font-size: 0.97rem;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(203, 213, 225, 0.6);
+    border-radius: 1.35rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
-.t-btn:hover { color: #1d1d1f; }
+.t-btn svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    color: #64748b;
+    transition: color 0.2s ease;
+}
+.t-btn:hover {
+    color: #0f172a;
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(148, 163, 184, 0.38);
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+    transform: translateY(-1px);
+}
+.t-btn:hover svg { color: #475569; }
+.t-btn:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.35);
+    outline-offset: 2px;
+}
 .t-act {
-    color: #1d1d1f;
-    background: #fff;
-    border-color: rgba(0, 0, 0, 0.06);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+    color: #0f4c81;
+    background: linear-gradient(180deg, rgba(246, 250, 255, 0.98), rgba(232, 242, 255, 0.96));
+    border-color: rgba(96, 165, 250, 0.5);
+    box-shadow: 0 12px 26px rgba(59, 130, 246, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+.t-act svg { color: #2563eb; }
+.t-act:hover {
+    color: #0f4c81;
+    background: linear-gradient(180deg, rgba(248, 251, 255, 1), rgba(226, 238, 255, 0.98));
+    border-color: rgba(96, 165, 250, 0.58);
 }
 .s-btn {
     padding: 0.8rem 1.4rem;
@@ -468,14 +496,14 @@ body::before {
 .app-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.7rem;
     margin: 1rem 1rem 0;
-    padding: 0.5rem;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 1.75rem;
-    background: rgba(255, 255, 255, 0.72);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(16px);
+    padding: 0.65rem;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 1.85rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 249, 252, 0.88));
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(18px);
     position: sticky;
     top: 0.75rem;
     z-index: 20;
@@ -802,6 +830,257 @@ body::before {
     font-size: 0.75rem;
     font-weight: 800;
 }
+.floating-side-btn {
+    position: fixed;
+    left: 0.85rem;
+    top: 50%;
+    z-index: 55;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 13.6rem;
+    padding: 1.1rem 0.78rem;
+    border-radius: 1.5rem;
+    border: 1px solid rgba(37, 99, 235, 0.18);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(239,246,255,0.98)),
+        linear-gradient(180deg, rgba(59,130,246,0.16), rgba(29,78,216,0.08));
+    color: #1d4ed8;
+    font-size: 1rem;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    box-shadow:
+        0 22px 54px rgba(37, 99, 235, 0.16),
+        0 10px 26px rgba(15, 23, 42, 0.08),
+        inset 0 1px 0 rgba(255,255,255,0.95);
+    backdrop-filter: blur(18px);
+    transform: translateY(-50%);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+.floating-side-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0.38rem;
+    background: linear-gradient(180deg, rgba(37, 99, 235, 0.9), rgba(56, 189, 248, 0.72));
+    box-shadow: 0 0 18px rgba(37, 99, 235, 0.28);
+}
+.floating-side-btn:hover {
+    transform: translateY(-50%) translateX(3px);
+    border-color: rgba(37, 99, 235, 0.28);
+    box-shadow:
+        0 28px 62px rgba(37, 99, 235, 0.22),
+        0 12px 30px rgba(15, 23, 42, 0.1),
+        inset 0 1px 0 rgba(255,255,255,1);
+    color: #1e40af;
+}
+.floating-side-btn.active {
+    color: #fff;
+    background: linear-gradient(180deg, #2563eb, #1d4ed8);
+    box-shadow: 0 24px 56px rgba(37, 99, 235, 0.3);
+    border-color: rgba(29, 78, 216, 0.4);
+}
+.floating-side-btn.active::before {
+    background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(191,219,254,0.72));
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.24);
+}
+.teacher-schedule-hero {
+    position: relative;
+    overflow: visible;
+    border: 1px solid rgba(255,255,255,0.78);
+    border-radius: 2rem;
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(239,246,255,0.88));
+    box-shadow: 0 28px 68px rgba(15, 23, 42, 0.08);
+}
+.teacher-schedule-hero::before {
+    content: "";
+    position: absolute;
+    inset: auto -4rem -4rem auto;
+    width: 14rem;
+    height: 14rem;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(59,130,246,0.16) 0%, rgba(59,130,246,0) 72%);
+    pointer-events: none;
+}
+.teacher-schedule-search-shell {
+    position: relative;
+    z-index: 5;
+}
+.teacher-schedule-search-input {
+    min-height: 3.7rem;
+    padding-left: 4.25rem !important;
+    padding-right: 1.15rem;
+    border-radius: 1.35rem;
+    font-size: 1rem;
+    font-weight: 700;
+    box-shadow:
+        0 16px 34px rgba(15, 23, 42, 0.06),
+        inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.teacher-schedule-search-input::placeholder {
+    color: #6b7280;
+    font-weight: 600;
+}
+.teacher-schedule-search-icon {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(191, 219, 254, 0.95);
+    background: linear-gradient(180deg, rgba(239,246,255,0.98), rgba(219,234,254,0.92));
+    color: #2563eb;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.96);
+    pointer-events: none;
+}
+.teacher-schedule-search-icon svg {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+.teacher-schedule-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.7rem);
+    z-index: 20;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.94);
+    border-radius: 1.25rem;
+    background: rgba(255,255,255,0.98);
+    box-shadow: 0 26px 56px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(18px);
+    max-height: min(26rem, 52vh);
+    overflow-y: auto;
+}
+.teacher-schedule-result {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.95rem 1.1rem;
+    border-bottom: 1px solid rgba(241, 245, 249, 0.9);
+    text-align: left;
+    transition: background-color 0.18s ease;
+}
+.teacher-schedule-result:last-child {
+    border-bottom: 0;
+}
+.teacher-schedule-result:hover {
+    background: rgba(239,246,255,0.86);
+}
+.teacher-schedule-summary-card {
+    padding: 1.25rem;
+    border: 1px solid rgba(191,219,254,0.58);
+    border-radius: 1.6rem;
+    background: rgba(255,255,255,0.88);
+    box-shadow: 0 16px 36px rgba(37, 99, 235, 0.08);
+}
+.teacher-schedule-table-shell {
+    overflow: auto;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 1.6rem;
+    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.teacher-schedule-grid {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.teacher-schedule-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 1rem 0.85rem;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+    background: linear-gradient(180deg, rgba(248,250,252,0.98), rgba(241,245,249,0.94));
+    color: #475569;
+    font-size: 0.86rem;
+    font-weight: 800;
+    text-align: center;
+}
+.teacher-schedule-grid thead th:first-child {
+    left: 0;
+    z-index: 4;
+}
+.teacher-schedule-period {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    min-width: 120px;
+    padding: 0.85rem 0.75rem;
+    border-right: 1px solid rgba(226, 232, 240, 0.95);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.88);
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
+    text-align: center;
+}
+.teacher-schedule-cell {
+    min-width: 126px;
+    padding: 0.8rem 0.9rem;
+    border-left: 1px solid rgba(226, 232, 240, 0.84);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.84);
+    background: rgba(255,255,255,0.9);
+    vertical-align: top;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.teacher-schedule-cell.is-editable {
+    cursor: pointer;
+}
+.teacher-schedule-cell.is-editable:hover {
+    background: rgba(238,242,255,0.92);
+}
+.teacher-schedule-slot {
+    min-height: 86px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+    border: 1px dashed rgba(226, 232, 240, 0.9);
+    background: rgba(248,250,252,0.78);
+    text-align: center;
+}
+.teacher-schedule-slot.filled {
+    justify-content: flex-start;
+    align-items: flex-start;
+    border-style: solid;
+    border-color: rgba(191, 219, 254, 0.9);
+    background: linear-gradient(180deg, rgba(239,246,255,0.95), rgba(255,255,255,0.96));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+}
+.teacher-schedule-slot.empty {
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+.teacher-schedule-course {
+    font-size: 0.92rem;
+    font-weight: 900;
+    color: #1e3a8a;
+    line-height: 1.45;
+}
+.teacher-schedule-location {
+    margin-top: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #64748b;
+    line-height: 1.45;
+}
+.teacher-schedule-admin-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 1.25rem;
+}
 .data-table-shell {
     overflow: hidden;
     border: 1px solid rgba(0, 0, 0, 0.06);
@@ -870,6 +1149,9 @@ body::before {
     .room-detail-summary {
         grid-template-columns: 1fr;
     }
+    .teacher-schedule-admin-meta {
+        grid-template-columns: 1fr;
+    }
 }
 @media (max-width: 900px) {
     .hero-panel h1 {
@@ -879,6 +1161,14 @@ body::before {
     .hero-panel p {
         font-size: 0.86rem !important;
         line-height: 1.45rem !important;
+    }
+    .floating-side-btn {
+        left: 0.45rem;
+        min-height: 10.8rem;
+        padding: 0.95rem 0.56rem;
+        border-radius: 1.25rem;
+        font-size: 0.86rem;
+        letter-spacing: 0.12em;
     }
 }
 @media (max-width: 640px) {
@@ -898,6 +1188,30 @@ body::before {
     }
     .schedule-cell {
         min-width: 120px;
+    }
+    .teacher-schedule-grid {
+        min-width: 680px;
+    }
+    .floating-side-btn {
+        top: auto;
+        bottom: 1rem;
+        min-height: auto;
+        padding: 0.9rem 0.62rem;
+        transform: none;
+        writing-mode: vertical-rl;
+    }
+    .floating-side-btn:hover {
+        transform: translateX(2px);
+    }
+    .teacher-schedule-search-input {
+        min-height: 3.35rem;
+        padding-left: 3.8rem !important;
+        font-size: 0.94rem;
+    }
+    .teacher-schedule-search-icon {
+        left: 0.9rem;
+        width: 2.1rem;
+        height: 2.1rem;
     }
 }
 @media (max-width: 767px) {
@@ -932,6 +1246,8 @@ body::before {
 </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800 antialiased">
+
+<button id="floating-teacher-schedule-btn" type="button" class="floating-side-btn" onclick="window.switchTab('teacher-schedule-tab')">教師課表查詢</button>
 
 <div class="page-shell max-w-7xl mx-auto pt-6 pb-12 px-4 sm:px-6 lg:px-8">
     <header class="hero-panel mb-5 rounded-[2rem] p-4 md:p-5 xl:p-6 text-slate-800">
@@ -1130,6 +1446,66 @@ body::before {
             <div id="query-results-container" class="hidden query-results-stack"><h3 class="text-xl font-bold flex-r gap-2"><i data-lucide="user" class="text-blue-600"></i> <span id="query-result-name-text"></span> 的借用清單</h3><div class="query-results-shell data-table-shell overflow-x-auto"><table class="min-w-full divide-y border-collapse text-sm"><thead class="bg-gray-50"><tr><th class="th">狀態</th><th class="th">設備項目</th><th class="th">借用時間</th><th class="th">歸還/預計</th></tr></thead><tbody id="query-table-body" class="divide-y divide-gray-100"></tbody></table></div></div>
         </div>
 
+        <!-- 教師課表查詢 -->
+        <div id="teacher-schedule-tab" class="tab-content p-6 md:p-8">
+            <div class="teacher-schedule-hero p-6 md:p-8">
+                <div class="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] xl:items-start">
+                    <div class="min-w-0">
+                        <div class="section-tag mb-4"><i data-lucide="calendar-range" class="w-3.5 h-3.5"></i> Teacher Schedule</div>
+                        <h2 class="font-display text-[1.95rem] font-black leading-[1.18] tracking-[0.03em] text-slate-900 md:text-[2.35rem]">教師課表查詢</h2>
+                        <p class="mt-4 max-w-2xl text-[0.94rem] font-medium leading-7 text-slate-600">
+                            直接搜尋教師姓名、職號或系所，即可查看每週授課節次與地點。課表內容由後台統一維護，前台僅提供查詢，不會改動資料。
+                        </p>
+                    </div>
+                    <div class="space-y-4">
+                        <form onsubmit="window.submitTeacherScheduleLookup(event)" class="flex flex-col gap-3 sm:flex-row sm:items-start">
+                            <div class="teacher-schedule-search-shell flex-1">
+                                <label class="lbl text-blue-900">教師 / 系所 / 職號</label>
+                                <div class="relative">
+                                    <span class="teacher-schedule-search-icon"><i data-lucide="search" class="h-4.5 w-4.5"></i></span>
+                                    <input type="text" id="teacher-schedule-search-input" class="inp teacher-schedule-search-input shadow-sm" placeholder="例如：黃建芳、漫畫系、tf0173" oninput="window.handleTeacherScheduleSearchInput()" onfocus="window.handleTeacherScheduleSearchInput()">
+                                </div>
+                                <div id="teacher-schedule-search-results" class="teacher-schedule-search-results hidden"></div>
+                            </div>
+                            <button type="submit" class="btn btn-b mt-0 sm:mt-[1.95rem] px-5 py-3"><i data-lucide="search-check" class="w-4 h-4"></i> 查詢課表</button>
+                        </form>
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="teacher-schedule-summary-card">
+                                <div class="text-[0.74rem] font-black uppercase tracking-[0.2em] text-blue-500">查詢方式</div>
+                                <div class="mt-3 text-lg font-black text-slate-900">輸入後直接選老師</div>
+                                <p class="mt-2 text-sm font-medium leading-6 text-slate-500">支援姓名、職號與系所關鍵字，即時列出符合的教師。</p>
+                            </div>
+                            <div class="teacher-schedule-summary-card">
+                                <div class="text-[0.74rem] font-black uppercase tracking-[0.2em] text-blue-500">權限說明</div>
+                                <div class="mt-3 text-lg font-black text-slate-900">僅後台可編輯</div>
+                                <p class="mt-2 text-sm font-medium leading-6 text-slate-500">前台只顯示課表結果；調課、增刪課程與老師資料維護都由管理員處理。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="teacher-schedule-selected-shell" class="hidden mt-8 space-y-5">
+                <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <div class="section-tag mb-3"><i data-lucide="book-open-check" class="w-3.5 h-3.5"></i> Weekly Timetable</div>
+                        <h3 id="teacher-schedule-selected-name" class="text-[1.6rem] font-black leading-tight text-slate-900 md:text-[2rem]">教師課表</h3>
+                        <p id="teacher-schedule-selected-meta" class="mt-2 text-sm font-medium text-slate-500">顯示授課節次與授課地點。</p>
+                    </div>
+                    <button type="button" onclick="window.clearTeacherScheduleSelection()" class="btn btn-g px-5 py-2.5 text-sm"><i data-lucide="x" class="w-4 h-4"></i> 清除查詢</button>
+                </div>
+                <div id="teacher-schedule-public-board" class="space-y-5"></div>
+            </div>
+
+            <div id="teacher-schedule-empty-state" class="mt-8 rounded-[1.75rem] border border-dashed border-slate-200 bg-white/80 px-6 py-14 text-center shadow-sm">
+                <div class="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <i data-lucide="calendar-search" class="w-8 h-8"></i>
+                </div>
+                <h3 class="mt-5 text-xl font-black text-slate-800">先選一位教師，再查看課表</h3>
+                <p class="mx-auto mt-3 max-w-2xl text-sm font-medium leading-7 text-slate-500">上方搜尋欄會即時帶出教師名單。選定後，這裡會顯示該教師本週的授課節次與地點。</p>
+            </div>
+        </div>
+
         <!-- 管理員控制台 -->
         <div id="admin-tab" class="tab-content p-6 md:p-8 text-gray-800">
             <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
@@ -1142,6 +1518,7 @@ body::before {
                 <div class="relative" id="admin-settings-dropdown-wrapper"><button onclick="window.toggleSettingsDropdown(event)" id="btn-admin-settings-group" class="a-btn flex-r gap-1">檔案管理 <i data-lucide="chevron-down" class="w-4 h-4"></i></button>
                     <div id="admin-settings-menu" class="hidden absolute left-0 z-50 mt-2 w-48 rounded-xl shadow-xl bg-white border border-gray-100 overflow-hidden flex-col">
                         <a href="#" onclick="window.switchAdminSection('teacher-section'); window.closeSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm border-b font-bold"><i data-lucide="users" class="inline w-4 h-4 text-purple-600 mr-2"></i>教師基本檔</a>
+                        <a href="#" onclick="window.switchAdminSection('teacher-schedule-section'); window.closeSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm border-b font-bold"><i data-lucide="calendar-range" class="inline w-4 h-4 text-blue-600 mr-2"></i>教師課表維護</a>
                         <a href="#" onclick="window.switchAdminSection('class-section'); window.closeSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm border-b font-bold"><i data-lucide="school" class="inline w-4 h-4 text-indigo-600 mr-2"></i>班級處室檔</a>
                         <a href="#" onclick="window.switchAdminSection('key-section'); window.closeSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm border-b font-bold"><i data-lucide="key" class="inline w-4 h-4 text-teal-600 mr-2"></i>教室與鑰匙</a>
                         <a href="#" onclick="window.switchAdminSection('period-section'); window.closeSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm font-bold"><i data-lucide="clock" class="inline w-4 h-4 text-rose-600 mr-2"></i>節次與時間</a>
@@ -1184,7 +1561,98 @@ body::before {
 
             <div id="equip-section" class="admin-section-content hidden animate-fadeIn"><div class="mb-6 bg-blue-50 p-5 rounded-xl border border-blue-100 shadow-sm text-gray-800"><h3 class="text-base font-bold text-blue-800 mb-6 flex-r gap-2"><i data-lucide="plus-circle" class="w-5 h-5"></i> 新增/編輯設備</h3><div class="grid grid-cols-1 md:grid-cols-12 gap-5 items-end"><div class="md:col-span-2"><label class="lbl text-xs">設備分類</label><input id="new-eq-category" placeholder="例如: 資訊設備" class="inp"></div><div class="md:col-span-3"><label class="lbl text-xs">設備名稱 <span class="text-red-500">*</span></label><input id="new-eq-name" placeholder="例如: 筆記型電腦" class="inp"></div><div class="md:col-span-2"><label class="lbl text-xs">財產編號 <span class="text-red-500">*</span></label><input id="new-eq-propno" placeholder="例如: A112-001" class="inp font-mono"></div><div class="md:col-span-2"><label class="lbl text-xs">存放地點 <span class="text-red-500">*</span></label><input id="new-eq-location" placeholder="例如: D201" class="inp" onkeydown="if(event.key==='Enter') window.addEquipment(false)"></div><div class="md:col-span-3 flex gap-2 flex-wrap xl:flex-nowrap"><div class="flex-1 relative flex group min-w-[140px]"><button onclick="window.addEquipment(true)" class="btn btn-b flex-1 rounded-r-none px-2 shadow-md"><i data-lucide="copy-plus" class="w-4 h-4 shrink-0"></i> 連續新增</button><button onclick="window.addEquipment(false)" class="btn bg-blue-700 text-white rounded-l-none border-l border-blue-500 px-3 hover:bg-blue-800 shrink-0" title="新增並清空所有欄位"><i data-lucide="plus" class="w-4 h-4"></i></button></div><button onclick="window.triggerEquipImport()" class="btn btn-gr flex-1 shadow-md shrink-0 px-3"><i data-lucide="file-up" class="w-4 h-4 shrink-0"></i> 匯入</button><input type="file" id="equip-import-input" class="hidden" accept=".xlsx, .xls" onchange="window.handleEquipImport(event)"></div></div><div class="mt-2 text-[11px] text-gray-500 ml-1 flex-r gap-1"><i data-lucide="info" class="w-3 h-3"></i> 提示：點擊「連續新增」將為您保留分類與名稱，方便快速建立同款設備。</div></div><div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4"><div class="w-full md:w-1/2 relative"><i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input type="text" id="equip-search-input" oninput="window.handleEquipSearch(event)" placeholder="搜尋設備名稱、分類、財產編號或地點..." class="inp pl-10 pr-4 py-2.5 shadow-sm"></div><div class="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar py-1"><div id="equip-batch-actions" class="hidden items-center gap-2 mr-2 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100"><span class="text-xs font-bold text-blue-700 whitespace-nowrap">已選 <span id="equip-selected-count">0</span> 項</span><div class="h-4 w-px bg-blue-200 mx-1"></div><button onclick="window.openBatchEditLocationModal()" class="text-xs font-bold text-blue-600 hover:text-blue-800 flex-r gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> 修改地點</button><button onclick="window.batchDeleteEquipment()" class="text-xs font-bold text-red-500 hover:text-red-700 flex-r gap-1 ml-2"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 刪除</button></div><div class="text-sm font-bold text-gray-500 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm flex-r gap-2 whitespace-nowrap">總數: <span id="equip-total-count" class="text-blue-600 text-lg font-black">0</span></div><button onclick="window.exportEquipmentList()" class="btn btn-g bg-white border border-gray-200 hover:bg-gray-50 shadow-sm"><i data-lucide="download" class="w-4 h-4"></i> 匯出</button></div></div><div class="bg-white border rounded-xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead class="bg-gray-50 font-bold text-xs text-gray-500"><tr><th class="px-4 py-4 w-10 text-center"><input type="checkbox" id="equip-select-all" onchange="window.toggleAllEquipSelect()" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"></th><th class="th cursor-pointer group" onclick="window.toggleEquipSort('category')">分類 <i data-lucide="arrow-up-down" class="w-3 h-3 inline-block opacity-0 group-hover:opacity-100 transition-opacity"></i></th><th class="th cursor-pointer group" onclick="window.toggleEquipSort('name')">名稱 <i data-lucide="arrow-up-down" class="w-3 h-3 inline-block opacity-0 group-hover:opacity-100 transition-opacity"></i></th><th class="th">財產編號</th><th class="th cursor-pointer group" onclick="window.toggleEquipSort('location')">存放地點 <i data-lucide="arrow-up-down" class="w-3 h-3 inline-block opacity-0 group-hover:opacity-100 transition-opacity"></i></th><th class="th text-right">操作</th></tr></thead><tbody id="admin-equipment-body" class="divide-y text-sm"></tbody></table><div class="bg-gray-50 px-6 py-3 border-t flex-b rounded-b-2xl"><span class="text-xs text-gray-500 font-bold" id="equip-page-info">第 1 頁，共 1 頁</span><div class="flex-r gap-2"><button onclick="window.changeEquipPage(-1)" class="btn btn-g bg-white border border-gray-300 hover:bg-gray-50 shadow-sm text-xs">上一頁</button><button onclick="window.changeEquipPage(1)" class="btn btn-g bg-white border border-gray-300 hover:bg-gray-50 shadow-sm text-xs">下一頁</button></div></div></div></div>
 
-            <div id="teacher-section" class="admin-section-content hidden animate-fadeIn"><div class="mb-8 bg-purple-50/50 p-6 rounded-2xl border border-purple-100 shadow-sm text-gray-800"><h3 class="text-base font-bold text-purple-800 mb-6 flex-r gap-2"><i data-lucide="user-plus" class="w-5 h-5"></i> 新增/編輯教師資料</h3><input type="hidden" id="edit-teacher-index" value="-1"><div class="grid grid-cols-1 md:grid-cols-6 gap-5 mb-5 text-gray-800"><div class="md:col-span-2"><label class="lbl text-purple-700">姓名 *</label><input id="new-teacher-name" class="inp focus:ring-purple-500" placeholder="王大明"></div><div class="md:col-span-2"><label class="lbl text-purple-700">職號</label><input id="new-teacher-id" class="inp font-mono focus:ring-purple-500" placeholder="T001"></div><div class="md:col-span-1"><label class="lbl text-purple-700">職位 *</label><select id="new-teacher-position" class="inp font-bold text-gray-700 focus:ring-purple-500"><option>專任</option><option>兼任</option><option>其他</option></select></div><div class="md:col-span-1"><label class="lbl text-purple-700">身份 <span class="text-gray-400 font-normal text-[10px]">(僅管理員)</span></label><select id="new-teacher-identity" class="inp font-bold text-gray-700 focus:ring-purple-500"><option>一般教師</option><option>主任</option><option>副主任</option><option>系辦助理</option><option>維修員</option></select></div></div><div class="grid grid-cols-1 md:grid-cols-6 gap-5 items-end text-gray-800"><div class="md:col-span-2"><label class="lbl text-purple-700">聯絡電話</label><input id="new-teacher-phone" class="inp font-mono focus:ring-purple-500" placeholder="0912-345-678"></div><div class="md:col-span-3"><label class="lbl text-purple-700">Email</label><input id="new-teacher-email" class="inp focus:ring-purple-500" placeholder="test@school.edu.tw" onkeydown="if(event.key==='Enter') window.saveTeacher()"></div><div class="md:col-span-1 flex-r gap-2"><button onclick="window.cancelEditTeacher()" id="btn-cancel-teacher" class="hidden btn btn-g w-full shadow-sm">取消</button><button onclick="window.saveTeacher()" id="btn-save-teacher" class="btn bg-[#8b5cf6] text-white hover:bg-purple-600 w-full shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存</button></div></div></div><div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead class="bg-gray-50 font-bold text-xs text-gray-500 uppercase tracking-wider"><tr><th class="th w-24">職號</th><th class="th">姓名</th><th class="th w-28">職位</th><th class="th w-32">身份</th><th class="th">聯絡電話</th><th class="th">EMAIL</th><th class="th text-right">操作</th></tr></thead><tbody id="admin-teacher-body" class="divide-y text-sm text-gray-800"></tbody></table></div></div>
+            <div id="teacher-section" class="admin-section-content hidden animate-fadeIn">
+                <div class="mb-8 rounded-2xl border border-purple-100 bg-purple-50/50 p-6 shadow-sm text-gray-800">
+                    <h3 class="mb-6 flex-r gap-2 text-base font-bold text-purple-800"><i data-lucide="user-plus" class="w-5 h-5"></i> 新增 / 編輯教師資料</h3>
+                    <input type="hidden" id="edit-teacher-index" value="-1">
+                    <div class="grid grid-cols-1 gap-5 text-gray-800 md:grid-cols-8">
+                        <div class="md:col-span-2"><label class="lbl text-purple-700">姓名 *</label><input id="new-teacher-name" class="inp focus:ring-purple-500" placeholder="王大明"></div>
+                        <div class="md:col-span-2"><label class="lbl text-purple-700">職號</label><input id="new-teacher-id" class="inp font-mono focus:ring-purple-500" placeholder="T001"></div>
+                        <div class="md:col-span-2"><label class="lbl text-purple-700">系所 / 單位</label><input id="new-teacher-department" class="inp focus:ring-purple-500" placeholder="漫畫系"></div>
+                        <div class="md:col-span-1"><label class="lbl text-purple-700">職位 *</label><select id="new-teacher-position" class="inp font-bold text-gray-700 focus:ring-purple-500"><option>專任</option><option>兼任</option><option>其他</option></select></div>
+                        <div class="md:col-span-1"><label class="lbl text-purple-700">身份 <span class="text-[10px] font-normal text-gray-400">(僅管理員)</span></label><select id="new-teacher-identity" class="inp font-bold text-gray-700 focus:ring-purple-500"><option>一般教師</option><option>主任</option><option>副主任</option><option>系辦助理</option><option>維修員</option></select></div>
+                    </div>
+                    <div class="mt-5 grid grid-cols-1 items-end gap-5 text-gray-800 md:grid-cols-8">
+                        <div class="md:col-span-2"><label class="lbl text-purple-700">聯絡電話</label><input id="new-teacher-phone" class="inp font-mono focus:ring-purple-500" placeholder="0912-345-678"></div>
+                        <div class="md:col-span-4"><label class="lbl text-purple-700">Email</label><input id="new-teacher-email" class="inp focus:ring-purple-500" placeholder="test@school.edu.tw" onkeydown="if(event.key==='Enter') window.saveTeacher()"></div>
+                        <div class="md:col-span-2 flex-r gap-2"><button onclick="window.cancelEditTeacher()" id="btn-cancel-teacher" class="hidden btn btn-g w-full shadow-sm">取消</button><button onclick="window.saveTeacher()" id="btn-save-teacher" class="btn bg-[#8b5cf6] text-white hover:bg-purple-600 w-full shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存</button></div>
+                    </div>
+                </div>
+                <div class="bg-white border rounded-2xl overflow-hidden shadow-sm">
+                    <table class="min-w-full divide-y">
+                        <thead class="bg-gray-50 font-bold text-xs text-gray-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="th w-24">職號</th>
+                                <th class="th">姓名</th>
+                                <th class="th">系所</th>
+                                <th class="th w-28">職位</th>
+                                <th class="th w-32">身份</th>
+                                <th class="th">聯絡電話</th>
+                                <th class="th">Email</th>
+                                <th class="th text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-teacher-body" class="divide-y text-sm text-gray-800"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="teacher-schedule-section" class="admin-section-content hidden animate-fadeIn">
+                <div class="mb-6 rounded-2xl border border-blue-100 bg-blue-50/50 p-6 shadow-sm text-gray-800">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <h3 class="flex-r gap-2 text-lg font-black text-blue-900"><i data-lucide="calendar-range" class="w-5 h-5 text-blue-600"></i> 教師課表維護</h3>
+                            <p class="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">選定教師後即可編輯每週節次。前台查詢只會讀取這裡的結果，不提供修改權限。</p>
+                        </div>
+                        <button type="button" onclick="window.clearAdminTeacherScheduleEntries()" class="btn btn-r px-4 py-2.5 text-xs shadow-sm"><i data-lucide="eraser" class="w-4 h-4"></i> 清空目前教師課表</button>
+                    </div>
+                    <div class="mt-6 rounded-[1.35rem] border border-blue-100 bg-white/80 p-5 shadow-sm">
+                        <div class="flex flex-col gap-4">
+                            <div>
+                                <div class="section-tag mb-3"><i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Import Center</div>
+                                <h4 class="text-base font-black text-slate-900">教師課表匯入</h4>
+                                <p class="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500">可直接匯入 Excel，也可上傳圖片或 PDF 交給 Gemini AI。Excel 會優先走結構化解析；圖片 / PDF 則會依序嘗試單格 AI、整頁 AI 與固定版型備援。</p>
+                            </div>
+                            <div class="grid w-full grid-cols-3 gap-3">
+                                <button type="button" onclick="window.triggerTeacherScheduleExcelImport()" class="btn bg-emerald-600 text-white hover:bg-emerald-700 px-4 py-2.5 text-[0.95rem] shadow-md whitespace-nowrap justify-center min-w-0"><i data-lucide="sheet" class="w-4 h-4 shrink-0"></i> 上傳 Excel</button>
+                                <input type="file" id="teacher-schedule-excel-input" class="hidden" accept=".xlsx,.xls,.csv" multiple onchange="window.handleTeacherScheduleExcelImport(event)">
+                                <button type="button" onclick="window.triggerTeacherScheduleAiImport()" class="btn btn-b px-4 py-2.5 text-[0.95rem] shadow-md whitespace-nowrap justify-center min-w-0"><i data-lucide="file-up" class="w-4 h-4 shrink-0"></i> 上傳課表圖片 / PDF</button>
+                                <input type="file" id="teacher-schedule-ai-input" class="hidden" accept=".pdf,image/png,image/jpeg,image/jpg" multiple onchange="window.handleTeacherScheduleAiImport(event)">
+                                <button type="button" onclick="window.confirmTeacherScheduleAiImport()" class="btn btn-gr px-4 py-2.5 text-[0.95rem] shadow-sm whitespace-nowrap justify-center min-w-0"><i data-lucide="database-zap" class="w-4 h-4 shrink-0"></i> 匯入解析結果</button>
+                            </div>
+                        </div>
+                        <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm font-medium leading-6 text-slate-500">
+                            <div class="font-black text-slate-700">目前匯入策略</div>
+                            <div class="mt-1">Excel 會先找星期、節次與課程欄位；若是格狀課表也會自動抓表頭。圖片 / PDF 仍可上傳，但建議優先使用 Excel，穩定度會高很多。</div>
+                        </div>
+                        <div id="teacher-schedule-ai-status" class="mt-4"></div>
+                        <div id="teacher-schedule-ai-preview" class="mt-4"></div>
+                    </div>
+                    <div class="teacher-schedule-admin-meta mt-6">
+                        <div>
+                            <label class="lbl text-blue-900">選擇教師</label>
+                            <select id="schedule-admin-teacher-select" class="inp" onchange="window.handleAdminTeacherScheduleSelect()"></select>
+                        </div>
+                        <div class="rounded-[1.35rem] border border-blue-100 bg-white/80 p-4 shadow-sm">
+                            <div class="text-[0.72rem] font-black uppercase tracking-[0.2em] text-blue-500">Teacher Info</div>
+                            <div id="schedule-admin-teacher-caption" class="mt-3 text-sm font-medium leading-6 text-slate-600">請先選擇一位教師，以載入課表編輯區。</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+                    <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div>
+                            <h4 class="flex-r gap-2 text-[1.15rem] font-black text-slate-800"><i data-lucide="layout-grid" class="w-5 h-5 text-blue-500"></i> 每週授課節次</h4>
+                            <p class="mt-2 text-sm font-medium text-slate-500">點擊任一儲存格即可新增、修改或刪除該節的課程與教室資訊。</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="schedule-note-chip"><i data-lucide="pencil-line" class="w-3.5 h-3.5"></i> 點擊儲存格編輯</span>
+                            <span class="schedule-note-chip"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> 僅後台可修改</span>
+                        </div>
+                    </div>
+                    <div id="teacher-schedule-admin-board"></div>
+                </div>
+            </div>
             <div id="class-section" class="admin-section-content hidden animate-fadeIn"><div class="mb-8 bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 shadow-sm text-gray-800"><h3 class="text-base font-bold text-indigo-800 mb-4 flex-r gap-2"><i data-lucide="school" class="w-5 h-5"></i> 班級處室維護</h3><input type="hidden" id="edit-class-index" value="-1"><div class="flex flex-wrap gap-4 items-end"><div class="flex-1"><label class="lbl text-indigo-700">名稱 *</label><input id="new-class-name" class="inp focus:ring-indigo-500" onkeydown="if(event.key==='Enter') window.saveClass()"></div><button onclick="window.cancelEditClass()" id="btn-cancel-class" class="hidden btn btn-g">取消</button><button onclick="window.saveClass()" id="btn-save-class" class="btn btn-i bg-indigo-600 text-white hover:bg-indigo-700">儲存</button></div></div><div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead class="bg-gray-50 font-bold text-xs text-gray-500"><tr><th class="th">名稱</th><th class="th text-right">操作</th></tr></thead><tbody id="admin-class-body" class="divide-y"></tbody></table></div></div>
             <div id="key-section" class="admin-section-content hidden animate-fadeIn"><div class="mb-8 bg-teal-50/50 p-6 rounded-2xl border border-teal-100 shadow-sm text-gray-800"><h3 class="text-base font-bold text-teal-800 mb-4 flex-r gap-2"><i data-lucide="key" class="w-5 h-5"></i> 教室鑰匙維護</h3><input type="hidden" id="edit-key-index" value="-1"><div class="flex flex-wrap gap-3 items-end"><div class="flex-1"><label class="lbl text-teal-700">名稱 *</label><input id="new-key-name" class="inp focus:ring-teal-500" onkeydown="if(event.key==='Enter') window.saveKey()"></div><button onclick="window.cancelEditKey()" id="btn-cancel-key" class="hidden btn btn-g">取消</button><button onclick="window.saveKey()" id="btn-save-key" class="btn bg-teal-600 text-white hover:bg-teal-700">儲存</button></div></div><div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead class="bg-gray-50 font-bold text-xs text-gray-500"><tr><th class="th">名稱</th><th class="th text-right">操作</th></tr></thead><tbody id="admin-key-body" class="divide-y"></tbody></table></div></div>
             <div id="period-section" class="admin-section-content hidden animate-fadeIn"><div class="mb-4 flex-r gap-2 text-rose-700 font-bold text-lg"><i data-lucide="clock" class="w-6 h-6"></i> 節次與時間管理</div><div class="bg-white border rounded-2xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead class="bg-gray-50 font-bold text-xs text-gray-500"><tr><th class="th">代號</th><th class="th">名稱</th><th class="th">開始</th><th class="th">結束</th><th class="th text-right">操作</th></tr></thead><tbody id="admin-period-body" class="divide-y text-sm text-gray-800"></tbody></table></div></div>
@@ -1264,6 +1732,38 @@ body::before {
     <div id="approve-modal" class="mod-w hidden"><div class="bg-white p-8 rounded-3xl w-80 shadow-2xl text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 text-green-600 mb-3"><i data-lucide="shield-check" class="w-6 h-6"></i></div><h3 class="font-black mb-4 text-green-700 text-xl">審核核准</h3><input type="text" id="approve-admin-name" class="inp text-center mb-6 bg-gray-50 focus:ring-green-500" placeholder="請輸入管理員姓名" onkeydown="if(event.key==='Enter') window.confirmApprove()"><div class="flex-r justify-center gap-3"><button onclick="hide('approve-modal')" class="btn btn-g px-5 py-2.5">取消</button><button onclick="window.confirmApprove()" class="btn btn-gr bg-green-600 text-white hover:bg-green-700 px-6 py-2.5 shadow-md">核准借用</button></div></div></div>
     
     <div id="teacher-self-edit-modal" class="mod-w hidden"><div class="bg-white p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-gray-800"><div class="flex-r gap-3 mb-6 border-b pb-4"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600"><i data-lucide="user-cog" class="w-6 h-6"></i></div><h3 class="font-black text-xl text-blue-900">個人資料維護</h3></div><div class="space-y-4 mb-6"><div><label class="lbl">教師姓名 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-name" oninput="window.autofillSelfData()" class="inp" placeholder="請輸入姓名 (例如：王大明)"></div><div><label class="lbl">教師職號 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-emp-id" oninput="window.autofillSelfData()" class="inp font-mono" placeholder="請輸入職號"></div><div><label class="lbl">教師職位 <span class="text-red-500">*</span></label><select id="self-teacher-position" class="inp font-bold text-gray-700"><option value="專任">專任</option><option value="兼任">兼任</option><option value="其他">其他</option></select></div><div><label class="lbl">聯絡電話 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-phone" class="inp font-mono" placeholder="09XX-XXX-XXX"></div><div><label class="lbl">Email <span class="text-red-500">*</span></label><input type="email" id="self-teacher-email" class="inp" placeholder="example@school.edu.tw"></div></div><div class="flex-r gap-3"><button onclick="hide('teacher-self-edit-modal')" class="btn btn-g flex-1 py-3">取消</button><button onclick="window.saveTeacherSelf()" class="btn btn-b flex-1 py-3 shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存</button></div></div></div>
+
+    <div id="teacher-schedule-editor-modal" class="mod-w hidden">
+        <div class="w-full max-w-md rounded-3xl border border-blue-100 bg-white p-6 shadow-2xl text-gray-800">
+            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                    <div class="section-tag mb-3"><i data-lucide="pencil-line" class="w-3.5 h-3.5"></i> Schedule Editor</div>
+                    <h3 id="teacher-schedule-editor-title" class="text-xl font-black text-blue-900">編輯課表</h3>
+                    <p id="teacher-schedule-editor-subtitle" class="mt-2 text-sm font-medium text-slate-500">設定該節的課程與地點。</p>
+                </div>
+                <button type="button" onclick="window.closeTeacherScheduleEditor()" class="room-detail-close shrink-0" aria-label="關閉教師課表編輯視窗">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="mt-5 space-y-4">
+                <div>
+                    <label class="lbl text-blue-900">課程名稱 *</label>
+                    <input type="text" id="teacher-schedule-editor-course" class="inp" placeholder="例如：分鏡腳本設計">
+                </div>
+                <div>
+                    <label class="lbl text-blue-900">授課地點</label>
+                    <input type="text" id="teacher-schedule-editor-location" class="inp" placeholder="例如：D201 普通教室">
+                </div>
+            </div>
+            <div class="mt-6 flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <button type="button" id="teacher-schedule-editor-delete" onclick="window.deleteTeacherScheduleEntry()" class="hidden btn btn-r px-4 py-2.5 text-sm"><i data-lucide="trash-2" class="w-4 h-4"></i> 刪除這節課</button>
+                <div class="flex gap-3 sm:ml-auto">
+                    <button type="button" onclick="window.closeTeacherScheduleEditor()" class="btn btn-g px-4 py-2.5 text-sm">取消</button>
+                    <button type="button" onclick="window.saveTeacherScheduleEntry()" class="btn btn-b px-4 py-2.5 text-sm shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存課表</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div id="batch-location-modal" class="mod-w hidden"><div class="bg-white p-6 rounded-3xl w-80 shadow-2xl relative text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3 text-blue-600"><i data-lucide="map-pin" class="w-6 h-6"></i></div><h3 class="font-black mb-1 text-xl">修改存放地點</h3><p class="text-xs text-gray-500 mb-5">將為 <span id="batch-location-count" class="font-bold text-blue-600">0</span> 項設備更新地點</p><div class="space-y-4 mb-6"><input type="text" id="batch-new-location" class="inp text-center font-bold" placeholder="請輸入新的存放地點 (例: D205)"></div><div class="flex-r gap-3"><button onclick="window.closeBatchEditLocationModal()" class="btn btn-g flex-1 py-2.5">取消</button><button onclick="window.confirmBatchEditLocation()" class="btn btn-b flex-1 py-2.5 shadow-md">確定修改</button></div></div></div>
 
@@ -1292,6 +1792,12 @@ body::before {
     window.autoRefreshTimer = null; 
     window.lastKnownDateStr = window.lastKnownDateStr || ''; 
     window.exhibitionAnnouncement = window.exhibitionAnnouncement || ''; 
+    window.currentTeacherScheduleTeacherKey = window.currentTeacherScheduleTeacherKey || '';
+    window.currentAdminTeacherScheduleKey = window.currentAdminTeacherScheduleKey || '';
+    window.teacherScheduleEditContext = window.teacherScheduleEditContext || null;
+    window.teacherScheduleGeminiApiKey = window.teacherScheduleGeminiApiKey || 'AIzaSyDeicY0YSlg-RqkL_sx6whC4-v2fxCo8wo';
+    window.teacherScheduleAiState = window.teacherScheduleAiState || { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
+    window.teacherScheduleTemplateDayMap = window.teacherScheduleTemplateDayMap || [null, 5, 4, 3, 2, 1];
     
     window.currentEquipPage = window.currentEquipPage || 1; 
     window.equipSearchTerm = window.equipSearchTerm || ''; 
@@ -1301,6 +1807,7 @@ body::before {
     window.selectedEquipmentIds = window.selectedEquipmentIds || new Set(); 
     
     if (!window.roomSchedules) { window.roomSchedules = JSON.parse(localStorage.getItem('roomSchedules')) || {}; }
+    if (!window.teacherSchedules) { window.teacherSchedules = JSON.parse(localStorage.getItem('teacherSchedules')) || []; }
 
     // --- 預設清單資料 ---
     window.teacherList = window.teacherList || [{ empId: 'tf0173', name: '黃建芳', phone: '0928525591', email: 'tf0173@gm.tut.edu.tw', position: '專任', identity: '主任' }, { empId: 't40124', name: '徐碧娟', phone: '0936491480', email: 't40124@gm.tut.edu.tw', position: '兼任', identity: '一般教師' }, { empId: 't40147', name: '俞家燕', phone: '0970053936', email: 't40147@gm.tut.edu.tw', position: '專任', identity: '一般教師' }, { empId: 't40122', name: '陸承石', phone: '0912553056', email: 't40122@gm.tut.edu.tw', position: '專任', identity: '副主任' }, { empId: 's00397', name: '鄭富耀', phone: '0902308837', email: 's00397@gm.tut.edu.tw', position: '其他', identity: '系辦助理' }, { empId: 's00401', name: '吳羽婕', phone: '0902138659', email: 's00401@gm.tut.edu.tw', position: '其他', identity: '系辦助理' }, { empId: 'd12040155', name: '黃振皓', phone: '0928471596', email: 'd12040155@gm.tut.edu.tw', position: '其他', identity: '維修員' }];
@@ -1309,6 +1816,13 @@ body::before {
     window.classList = window.classList || ['四漫一A', '四漫一B', '四漫一C', '漫畫系'];
     window.periodList = window.periodList || Array.from({length: 12}, (_, i) => ({ id: `${i+1}`, name: `第${i+1}節`, start: '00:00', end: '00:00' }));
     window.periodList[4] = { id: '中午', name: '中午', start: '12:00', end: '13:30' };
+    window.teacherScheduleWeekdays = window.teacherScheduleWeekdays || [
+        { id: 1, label: '一', fullLabel: '星期一' },
+        { id: 2, label: '二', fullLabel: '星期二' },
+        { id: 3, label: '三', fullLabel: '星期三' },
+        { id: 4, label: '四', fullLabel: '星期四' },
+        { id: 5, label: '五', fullLabel: '星期五' }
+    ];
 
     // --- DOM 工具函式 ---
     const $ = id => document.getElementById(id);
@@ -1330,6 +1844,12 @@ body::before {
     window.getLocalDateString = function() { 
         const d = new Date(); 
         return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); 
+    };
+
+    window.applyBorrowDefaultDates = function(force = false) {
+        const today = window.getLocalDateString();
+        const keyReturnInput = $('expectedReturnDate-key');
+        if(keyReturnInput && (force || !keyReturnInput.value)) keyReturnInput.value = today;
     };
 
     window.showToast = function(msg, type='success') { 
@@ -1409,6 +1929,1741 @@ body::before {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     };
+
+    window.makeTeacherScheduleKey = function(teacher, index = 0) {
+        const preferred = String((teacher && (teacher.scheduleKey || teacher.empId || teacher.name)) || '').trim().toLowerCase();
+        const base = preferred
+            .normalize('NFKD')
+            .replace(/[^\w\u4e00-\u9fff-]+/g, '-')
+            .replace(/-{2,}/g, '-')
+            .replace(/^-+|-+$/g, '');
+        return base || ('teacher-' + (index + 1));
+    };
+
+    window.getTeacherSchedulePeriodOrder = function(periodId) {
+        const idx = (window.periodList || []).findIndex(period => String(period.id) === String(periodId));
+        return idx >= 0 ? idx : 999;
+    };
+
+    window.ensureTeacherScheduleTeacherDefaults = function() {
+        const seenKeys = new Set();
+        window.teacherList = (window.teacherList || []).map((teacher, index) => {
+            const nextTeacher = { ...teacher };
+            if(!nextTeacher.department) nextTeacher.department = '漫畫系';
+            let baseKey = window.makeTeacherScheduleKey(nextTeacher, index);
+            let scheduleKey = baseKey;
+            let duplicateIndex = 2;
+            while(seenKeys.has(scheduleKey)) {
+                scheduleKey = baseKey + '-' + duplicateIndex;
+                duplicateIndex += 1;
+            }
+            seenKeys.add(scheduleKey);
+            nextTeacher.scheduleKey = scheduleKey;
+            return nextTeacher;
+        });
+
+        window.teacherSchedules = (window.teacherSchedules || [])
+            .map((entry, index) => ({
+                id: entry && entry.id ? String(entry.id) : 'ts-' + Date.now() + '-' + index,
+                scheduleKey: String((entry && (entry.scheduleKey || entry.teacherId || entry.teacherKey)) || ''),
+                day: Number(entry && entry.day),
+                periodId: String((entry && (entry.periodId || entry.period)) || ''),
+                courseName: String((entry && entry.courseName) || '').trim(),
+                location: String((entry && entry.location) || '').trim()
+            }))
+            .filter(entry => entry.scheduleKey && seenKeys.has(entry.scheduleKey) && entry.day >= 1 && entry.day <= 5 && entry.periodId)
+            .sort((a, b) => {
+                const teacherOrder = a.scheduleKey.localeCompare(b.scheduleKey, 'zh-Hant');
+                if(teacherOrder !== 0) return teacherOrder;
+                if(a.day !== b.day) return a.day - b.day;
+                return window.getTeacherSchedulePeriodOrder(a.periodId) - window.getTeacherSchedulePeriodOrder(b.periodId);
+            });
+    };
+
+    window.getTeacherByScheduleKey = function(scheduleKey) {
+        return (window.teacherList || []).find(teacher => teacher.scheduleKey === scheduleKey) || null;
+    };
+
+    window.getTeacherSchedulePublicTeachers = function() {
+        return (window.teacherList || []).filter(teacher => String(teacher && teacher.position || '').trim() !== '其他');
+    };
+
+    window.getTeacherScheduleEntries = function(scheduleKey) {
+        return (window.teacherSchedules || []).filter(entry => entry.scheduleKey === scheduleKey);
+    };
+
+    window.findTeacherScheduleEntry = function(scheduleKey, day, periodId) {
+        return (window.teacherSchedules || []).find(entry => entry.scheduleKey === scheduleKey && Number(entry.day) === Number(day) && String(entry.periodId) === String(periodId)) || null;
+    };
+
+    window.findTeacherScheduleMatches = function(query) {
+        const keyword = String(query || '').trim().toLowerCase();
+        if(!keyword) return [];
+        return window.getTeacherSchedulePublicTeachers().filter(teacher => {
+            const haystack = [teacher.name, teacher.empId, teacher.department, teacher.position]
+                .map(value => String(value || '').toLowerCase())
+                .join(' ');
+            return haystack.includes(keyword);
+        });
+    };
+
+    window.getTeacherScheduleSummary = function(scheduleKey) {
+        const entries = window.getTeacherScheduleEntries(scheduleKey);
+        const dayCount = new Set(entries.map(entry => Number(entry.day))).size;
+        const locationCount = new Set(entries.map(entry => entry.location).filter(Boolean)).size;
+        return {
+            totalSessions: entries.length,
+            totalDays: dayCount,
+            totalLocations: locationCount
+        };
+    };
+
+    window.buildTeacherScheduleGridHtml = function(scheduleKey, editable = false) {
+        const entries = window.getTeacherScheduleEntries(scheduleKey);
+        let html = '<div class="teacher-schedule-table-shell"><table class="teacher-schedule-grid"><thead><tr><th>節次</th>';
+        (window.teacherScheduleWeekdays || []).forEach(day => {
+            html += '<th>' + window.escapeHtml(day.label) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+
+        (window.periodList || []).forEach(period => {
+            const timeText = period.start && period.end && !(period.start === '00:00' && period.end === '00:00')
+                ? window.escapeHtml(period.start + ' - ' + period.end)
+                : '時間待設定';
+            html += '<tr><td class="teacher-schedule-period"><div class="text-[1rem] font-black text-slate-700">' + window.escapeHtml(period.name || period.id) + '</div><div class="mt-1 text-[0.72rem] font-bold text-slate-400">' + timeText + '</div></td>';
+            (window.teacherScheduleWeekdays || []).forEach(day => {
+                const entry = entries.find(item => Number(item.day) === Number(day.id) && String(item.periodId) === String(period.id));
+                const cellClass = editable ? 'teacher-schedule-cell is-editable' : 'teacher-schedule-cell';
+                const slotClass = entry ? 'teacher-schedule-slot filled' : 'teacher-schedule-slot empty';
+                let slotHtml = '<span>尚未排課</span>';
+                if(entry) {
+                    slotHtml = '<div class="w-full text-left"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
+                }
+                const actionAttrs = editable
+                    ? ' data-schedule-key="' + window.escapeHtml(scheduleKey) + '" data-day="' + window.escapeHtml(day.id) + '" data-period-id="' + window.escapeHtml(period.id) + '" onclick="window.openTeacherScheduleEditor(this)"'
+                    : '';
+                html += '<td class="' + cellClass + '"' + actionAttrs + '><div class="' + slotClass + '">' + slotHtml + '</div></td>';
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        return html;
+    };
+
+    window.buildTeacherSchedulePreviewGridHtml = function(entries) {
+        const safeEntries = Array.isArray(entries) ? entries : [];
+        let html = '<div class="teacher-schedule-table-shell"><table class="teacher-schedule-grid"><thead><tr><th>節次</th>';
+        (window.teacherScheduleWeekdays || []).forEach(day => {
+            html += '<th>' + window.escapeHtml(day.label) + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        (window.periodList || []).forEach(period => {
+            const timeText = period.start && period.end && !(period.start === '00:00' && period.end === '00:00')
+                ? window.escapeHtml(period.start + ' - ' + period.end)
+                : '時間待設定';
+            html += '<tr><td class="teacher-schedule-period"><div class="text-[1rem] font-black text-slate-700">' + window.escapeHtml(period.name || period.id) + '</div><div class="mt-1 text-[0.72rem] font-bold text-slate-400">' + timeText + '</div></td>';
+            (window.teacherScheduleWeekdays || []).forEach(day => {
+                const entry = safeEntries.find(item => Number(item.day) === Number(day.id) && String(item.periodId) === String(period.id));
+                const slotClass = entry ? 'teacher-schedule-slot filled' : 'teacher-schedule-slot empty';
+                let slotHtml = '<span>尚未排課</span>';
+                if(entry) {
+                    slotHtml = '<div class="w-full text-left"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
+                }
+                html += '<td class="teacher-schedule-cell"><div class="' + slotClass + '">' + slotHtml + '</div></td>';
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+        return html;
+    };
+
+    window.normalizeTeacherScheduleAiPeriodId = function(rawValue) {
+        const raw = String(rawValue || '').trim();
+        if(!raw) return '';
+        const periods = window.periodList || [];
+        const chineseNumberMap = {
+            '一': '1',
+            '二': '2',
+            '三': '3',
+            '四': '4',
+            '五': '5',
+            '六': '6',
+            '七': '7',
+            '八': '8',
+            '九': '9',
+            '十': '10',
+            '十一': '11',
+            '十二': '12'
+        };
+        let match = periods.find(period => String(period.id) === raw || String(period.name) === raw);
+        if(match) return String(match.id);
+        if(raw.includes('中午')) {
+            match = periods.find(period => String(period.id).includes('中午') || String(period.name).includes('中午'));
+            if(match) return String(match.id);
+        }
+        const normalized = raw.replace(/^第\s*/,'').replace(/\s*節$/,'').trim();
+        match = periods.find(period => String(period.id) === normalized);
+        if(match) return String(match.id);
+        if(chineseNumberMap[normalized]) {
+            match = periods.find(period => String(period.id) === chineseNumberMap[normalized]);
+            if(match) return String(match.id);
+        }
+        const chineseMatch = normalized.match(/^(十|十一|十二|[一二三四五六七八九])$/);
+        if(chineseMatch && chineseNumberMap[chineseMatch[1]]) {
+            match = periods.find(period => String(period.id) === chineseNumberMap[chineseMatch[1]]);
+            if(match) return String(match.id);
+        }
+        const digitMatch = normalized.match(/\d+/);
+        if(digitMatch) {
+            match = periods.find(period => String(period.id) === digitMatch[0]);
+            if(match) return String(match.id);
+        }
+        return '';
+    };
+
+    window.mergeTeacherScheduleAiParsedData = function(currentList, incomingList) {
+        const mergedMap = new Map();
+        [...(currentList || []), ...(incomingList || [])].forEach(item => {
+            if(!item || !item.scheduleKey) return;
+            if(!mergedMap.has(item.scheduleKey)) {
+                mergedMap.set(item.scheduleKey, {
+                    teacherName: item.teacherName || '未知老師',
+                    department: item.department || '未指定系所',
+                    scheduleKey: item.scheduleKey,
+                    isNewTeacher: !!item.isNewTeacher,
+                    schedules: []
+                });
+            }
+            const target = mergedMap.get(item.scheduleKey);
+            target.teacherName = item.teacherName || target.teacherName;
+            target.department = item.department || target.department;
+            target.isNewTeacher = target.isNewTeacher && !!item.isNewTeacher;
+            const slotMap = new Map();
+            [...(target.schedules || []), ...(item.schedules || [])].forEach(schedule => {
+                if(!schedule || !schedule.periodId) return;
+                slotMap.set(schedule.day + '-' + schedule.periodId, schedule);
+            });
+            target.schedules = Array.from(slotMap.values()).sort((a, b) => {
+                if(Number(a.day) !== Number(b.day)) return Number(a.day) - Number(b.day);
+                return window.getTeacherSchedulePeriodOrder(a.periodId) - window.getTeacherSchedulePeriodOrder(b.periodId);
+            });
+        });
+        return Array.from(mergedMap.values());
+    };
+
+    window.mapTeacherScheduleAiResults = function(parsedJsonArray) {
+        const existingTeachers = window.teacherList || [];
+        const reservedKeys = new Set(existingTeachers.map(teacher => teacher.scheduleKey));
+        const processed = [];
+        (parsedJsonArray || []).forEach((parsedTeacher, teacherIndex) => {
+            const teacherName = String((parsedTeacher && (parsedTeacher.teacherName || parsedTeacher.name)) || '').trim();
+            if(!teacherName) return;
+            const matchedTeacher = existingTeachers.find(teacher => String(teacher.name || '').trim() === teacherName);
+            const matchedProcessed = processed.find(item => item.teacherName === teacherName);
+            let scheduleKey = matchedTeacher ? matchedTeacher.scheduleKey : (matchedProcessed ? matchedProcessed.scheduleKey : '');
+            if(!scheduleKey) {
+                const baseKey = window.makeTeacherScheduleKey({ name: teacherName }, existingTeachers.length + teacherIndex);
+                scheduleKey = baseKey;
+                let suffix = 2;
+                while(reservedKeys.has(scheduleKey)) {
+                    scheduleKey = baseKey + '-' + suffix;
+                    suffix += 1;
+                }
+                reservedKeys.add(scheduleKey);
+            }
+            const schedules = (parsedTeacher.schedules || parsedTeacher.schedule || []).map((item, index) => {
+                const periodId = window.normalizeTeacherScheduleAiPeriodId(item.periodId || item.period || item.periodName || item.section);
+                const day = Number(item.day || item.weekday || item.weekDay);
+                if(!periodId || !day || day < 1 || day > 5) return null;
+                return {
+                    id: 'ai-' + Date.now() + '-' + teacherIndex + '-' + index + '-' + Math.random().toString(36).slice(2, 6),
+                    scheduleKey,
+                    day,
+                    periodId,
+                    courseName: String(item.courseName || item.course || '未命名課程').trim() || '未命名課程',
+                    location: String(item.location || item.classroom || '未指定').trim() || '未指定'
+                };
+            }).filter(Boolean);
+            processed.push({
+                teacherName,
+                department: String((parsedTeacher && parsedTeacher.department) || (matchedTeacher && matchedTeacher.department) || '漫畫系').trim() || '漫畫系',
+                scheduleKey,
+                isNewTeacher: !matchedTeacher,
+                schedules
+            });
+        });
+        return processed.filter(item => item.teacherName && item.schedules.length > 0);
+    };
+
+    window.renderTeacherScheduleAiState = function() {
+        const status = $('teacher-schedule-ai-status');
+        const preview = $('teacher-schedule-ai-preview');
+        const aiState = window.teacherScheduleAiState || { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
+        if(status) {
+            let statusHtml = '';
+            if(aiState.isProcessing) {
+                statusHtml = '<div class="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700"><div class="flex items-center gap-2 font-black"><i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i> 正在處理課表匯入</div><div class="mt-2 leading-6">' + window.escapeHtml(aiState.progress || '請稍候，正在處理檔案...') + '</div></div>';
+            } else if(aiState.errorMsg) {
+                statusHtml = '<div class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"><div class="flex items-center gap-2 font-black"><i data-lucide="triangle-alert" class="w-4 h-4"></i> 解析失敗</div><div class="mt-2 leading-6">' + window.escapeHtml(aiState.errorMsg) + '</div></div>';
+            } else if(aiState.successMsg) {
+                statusHtml = '<div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700"><div class="flex items-center gap-2 font-black"><i data-lucide="badge-check" class="w-4 h-4"></i> 匯入完成</div><div class="mt-2 leading-6">' + window.escapeHtml(aiState.successMsg) + '</div></div>';
+            }
+            status.innerHTML = statusHtml;
+        }
+        if(preview) {
+            if(!(aiState.parsedDataList || []).length) {
+                preview.innerHTML = '';
+            } else {
+                preview.innerHTML =
+                    '<div class="rounded-[1.35rem] border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm">' +
+                        '<div class="flex flex-col gap-3 border-b border-emerald-100 pb-4 md:flex-row md:items-center md:justify-between">' +
+                            '<div>' +
+                                '<div class="text-sm font-black text-emerald-800">匯入預覽</div>' +
+                                '<p class="mt-1 text-sm font-medium text-emerald-700">已整理出 ' + (aiState.parsedDataList || []).length + ' 位教師的課表。確認無誤後，按上方「匯入解析結果」即可寫入正式資料。</p>' +
+                            '</div>' +
+                            '<button type="button" onclick="window.clearTeacherScheduleAiPreview()" class="btn btn-g px-4 py-2 text-xs"><i data-lucide="x" class="w-4 h-4"></i> 清空預覽</button>' +
+                        '</div>' +
+                        '<div class="mt-4 space-y-4 max-h-[720px] overflow-y-auto pr-1">' +
+                            (aiState.parsedDataList || []).map(item => (
+                                '<div class="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-sm">' +
+                                    '<div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">' +
+                                        '<div>' +
+                                            '<div class="text-lg font-black text-slate-900">' + window.escapeHtml(item.teacherName || '未知老師') + '</div>' +
+                                            '<div class="mt-1 text-sm font-medium text-slate-500">' + window.escapeHtml(item.department || '未指定系所') + '</div>' +
+                                        '</div>' +
+                                        '<div class="flex flex-wrap gap-2">' +
+                                            (item.isNewTeacher ? '<span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-700">新教師</span>' : '<span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700">對應既有教師</span>') +
+                                            '<span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">' + (item.schedules || []).length + ' 節</span>' +
+                                        '</div>' +
+                                    '</div>' +
+                                    '<div class="mt-4">' + window.buildTeacherSchedulePreviewGridHtml(item.schedules || []) + '</div>' +
+                                '</div>'
+                            )).join('') +
+                        '</div>' +
+                    '</div>';
+            }
+        }
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.triggerTeacherScheduleAiImport = function() {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以使用課表匯入', 'error');
+        if($('teacher-schedule-ai-input')) $('teacher-schedule-ai-input').click();
+    };
+
+    window.triggerTeacherScheduleExcelImport = function() {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以使用課表匯入', 'error');
+        if($('teacher-schedule-excel-input')) $('teacher-schedule-excel-input').click();
+    };
+
+    window.readTeacherScheduleAiFileAsBase64 = function(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = event => {
+                const result = event && event.target ? String(event.target.result || '') : '';
+                resolve(result.split(',')[1] || '');
+            };
+            reader.onerror = err => reject(err);
+            reader.readAsDataURL(file);
+        });
+    };
+
+    window.readTeacherScheduleWorkbook = function(file) {
+        return new Promise((resolve, reject) => {
+            if(!window.XLSX) return reject(new Error('Excel 模組尚未載入，請重新整理後再試'));
+            const reader = new FileReader();
+            reader.onload = event => {
+                try {
+                    const data = new Uint8Array(event && event.target ? event.target.result : []);
+                    resolve(window.XLSX.read(data, { type: 'array' }));
+                } catch(err) {
+                    reject(err);
+                }
+            };
+            reader.onerror = err => reject(err);
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    window.normalizeTeacherScheduleImportText = function(value) {
+        return String(value == null ? '' : value).replace(/\r/g, '\n').replace(/\u3000/g, ' ').normalize('NFKC').trim();
+    };
+
+    window.compactTeacherScheduleImportText = function(value) {
+        return window.normalizeTeacherScheduleImportText(value).toLowerCase().replace(/\s+/g, '');
+    };
+
+    window.matchTeacherScheduleExcelDay = function(value) {
+        const normalized = window.compactTeacherScheduleImportText(value);
+        if(!normalized) return 0;
+        const dayMatchers = [
+            { day: 1, patterns: [/^一$/, /^星期一$/, /^週一$/, /^禮拜一$/, /^礼拜一$/, /^mon$/, /^monday$/] },
+            { day: 2, patterns: [/^二$/, /^星期二$/, /^週二$/, /^禮拜二$/, /^礼拜二$/, /^tue$/, /^tues$/, /^tuesday$/] },
+            { day: 3, patterns: [/^三$/, /^星期三$/, /^週三$/, /^禮拜三$/, /^礼拜三$/, /^wed$/, /^wednesday$/] },
+            { day: 4, patterns: [/^四$/, /^星期四$/, /^週四$/, /^禮拜四$/, /^礼拜四$/, /^thu$/, /^thur$/, /^thurs$/, /^thursday$/] },
+            { day: 5, patterns: [/^五$/, /^星期五$/, /^週五$/, /^禮拜五$/, /^礼拜五$/, /^fri$/, /^friday$/] }
+        ];
+        const matched = dayMatchers.find(item => item.patterns.some(pattern => pattern.test(normalized)));
+        return matched ? matched.day : 0;
+    };
+
+    window.findTeacherScheduleExcelDayHeader = function(rows) {
+        let best = null;
+        const maxRows = Math.min(rows.length, 18);
+        for(let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
+            const row = rows[rowIndex] || [];
+            const dayMap = new Map();
+            row.forEach((cell, colIndex) => {
+                const day = window.matchTeacherScheduleExcelDay(cell);
+                if(day && !dayMap.has(day)) dayMap.set(day, colIndex);
+            });
+            const dayColumns = Array.from(dayMap.entries()).sort((a, b) => a[1] - b[1]).map(([day, colIndex]) => ({ day, colIndex }));
+            if(dayColumns.length < 3) continue;
+            const score = dayColumns.length * 100 - rowIndex;
+            if(!best || score > best.score) best = { rowIndex, dayColumns, score };
+        }
+        return best;
+    };
+
+    window.findTeacherScheduleExcelPeriodColumn = function(rows, headerMeta) {
+        const firstDayCol = headerMeta && headerMeta.dayColumns && headerMeta.dayColumns.length
+            ? Math.min(...headerMeta.dayColumns.map(item => item.colIndex))
+            : 0;
+        let best = { colIndex: -1, score: 0 };
+        const maxCols = Math.max(1, firstDayCol);
+        for(let colIndex = 0; colIndex < maxCols; colIndex += 1) {
+            let score = 0;
+            for(let rowIndex = (headerMeta.rowIndex || 0) + 1; rowIndex < Math.min(rows.length, (headerMeta.rowIndex || 0) + 40); rowIndex += 1) {
+                const row = rows[rowIndex] || [];
+                if(window.normalizeTeacherScheduleAiPeriodId(row[colIndex])) score += 1;
+            }
+            if(score > best.score) best = { colIndex, score };
+        }
+        return best.score >= 2 ? best.colIndex : -1;
+    };
+
+    window.findTeacherScheduleExcelListHeader = function(rows) {
+        const headerMatchers = {
+            teacher: ['教師', '老師', '姓名', 'teacher'],
+            department: ['系所', '單位', 'department', 'dept'],
+            day: ['星期', '週次', 'weekday', 'day'],
+            period: ['節次', '節', 'period', 'section'],
+            course: ['課程', '課名', '科目', 'course', 'subject'],
+            location: ['教室', '地點', '位置', 'location', 'classroom']
+        };
+        const maxRows = Math.min(rows.length, 12);
+        for(let rowIndex = 0; rowIndex < maxRows; rowIndex += 1) {
+            const row = rows[rowIndex] || [];
+            const header = {};
+            row.forEach((cell, colIndex) => {
+                const compact = window.compactTeacherScheduleImportText(cell);
+                if(!compact) return;
+                Object.keys(headerMatchers).forEach(key => {
+                    if(header[key] !== undefined) return;
+                    if(headerMatchers[key].some(word => compact.includes(word.toLowerCase()))) header[key] = colIndex;
+                });
+            });
+            if(header.day !== undefined && header.period !== undefined && header.course !== undefined) {
+                header.rowIndex = rowIndex;
+                return header;
+            }
+        }
+        return null;
+    };
+
+    window.parseTeacherScheduleExcelCellValue = function(value) {
+        const text = window.normalizeTeacherScheduleImportText(value);
+        if(!text) return null;
+        const compact = text.replace(/\s+/g, '');
+        if(!compact || /^[-—–]+$/.test(compact) || compact === '尚未排課' || compact === '無') return null;
+        const parsed = window.parseTeacherScheduleCellText(text);
+        if(parsed) return parsed;
+        const meaningful = compact.replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, '');
+        if(meaningful.length < 2) return null;
+        const location = window.extractTeacherScheduleLocation(text);
+        const courseName = location ? text.replace(location, ' ').replace(/\s+/g, ' ').trim() : text.replace(/\s+/g, ' ').trim();
+        return {
+            courseName: courseName || '未命名課程',
+            location: location || '未指定'
+        };
+    };
+
+    window.findTeacherScheduleTeacherByNameLike = function(rawName) {
+        const compact = window.compactTeacherScheduleImportText(rawName);
+        if(!compact) return null;
+        return (window.teacherList || []).find(teacher => {
+            const target = window.compactTeacherScheduleImportText(teacher.name);
+            return target && (compact === target || compact.includes(target) || target.includes(compact));
+        }) || null;
+    };
+
+    window.resolveTeacherScheduleImportTeacher = function(rawName, selectedTeacher, sheetName) {
+        const directName = window.normalizeTeacherScheduleImportText(rawName);
+        const matchedByName = window.findTeacherScheduleTeacherByNameLike(directName);
+        if(matchedByName) return matchedByName;
+        if(directName) return { name: directName, department: '' };
+        if(selectedTeacher) return selectedTeacher;
+        const matchedBySheet = window.findTeacherScheduleTeacherByNameLike(sheetName);
+        if(matchedBySheet) return matchedBySheet;
+        const fallbackName = window.normalizeTeacherScheduleImportText(sheetName);
+        return fallbackName ? { name: fallbackName, department: '' } : null;
+    };
+
+    window.mergeTeacherScheduleRawImportResults = function(currentList, incomingList) {
+        const mergedMap = new Map();
+        [...(currentList || []), ...(incomingList || [])].forEach(item => {
+            if(!item || !item.teacherName) return;
+            const key = item.teacherName + '|' + (item.department || '');
+            if(!mergedMap.has(key)) {
+                mergedMap.set(key, {
+                    teacherName: item.teacherName,
+                    department: item.department || '漫畫系',
+                    schedules: []
+                });
+            }
+            const target = mergedMap.get(key);
+            const slotMap = new Map([...(target.schedules || []), ...((item.schedules || []))].map(schedule => [schedule.day + '-' + schedule.periodId, schedule]));
+            target.schedules = Array.from(slotMap.values()).sort((a, b) => {
+                if(Number(a.day) !== Number(b.day)) return Number(a.day) - Number(b.day);
+                return window.getTeacherSchedulePeriodOrder(a.periodId) - window.getTeacherSchedulePeriodOrder(b.periodId);
+            });
+        });
+        return Array.from(mergedMap.values()).filter(item => item.schedules.length);
+    };
+
+    window.shouldBindExcelImportToSelectedTeacher = function(rawResult) {
+        if(!Array.isArray(rawResult) || !rawResult.length) return true;
+        return rawResult.every(item => {
+            const name = window.normalizeTeacherScheduleImportText(item && item.teacherName);
+            return !name || name === '未命名老師' || name === '未知老師';
+        });
+    };
+
+    window.parseTeacherScheduleExcelListSheet = function(rows, selectedTeacher, sheetName) {
+        const header = window.findTeacherScheduleExcelListHeader(rows);
+        if(!header) return [];
+        let parsedResults = [];
+        for(let rowIndex = header.rowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+            const row = rows[rowIndex] || [];
+            if(!row.some(cell => window.normalizeTeacherScheduleImportText(cell))) continue;
+            const day = window.matchTeacherScheduleExcelDay(row[header.day]);
+            const periodId = window.normalizeTeacherScheduleAiPeriodId(row[header.period]);
+            const cellText = header.location !== undefined
+                ? [row[header.course], row[header.location]].filter(Boolean).join('\n')
+                : row[header.course];
+            const parsedCell = window.parseTeacherScheduleExcelCellValue(cellText);
+            if(!day || !periodId || !parsedCell) continue;
+            const teacherInfo = window.resolveTeacherScheduleImportTeacher(header.teacher !== undefined ? row[header.teacher] : '', selectedTeacher, sheetName);
+            if(!teacherInfo || !teacherInfo.name) continue;
+            parsedResults = window.mergeTeacherScheduleRawImportResults(parsedResults, [{
+                teacherName: teacherInfo.name,
+                department: window.normalizeTeacherScheduleImportText(header.department !== undefined ? row[header.department] : '') || teacherInfo.department || '漫畫系',
+                schedules: [{
+                    day,
+                    periodId,
+                    courseName: parsedCell.courseName,
+                    location: parsedCell.location
+                }]
+            }]);
+        }
+        return parsedResults;
+    };
+
+    window.parseTeacherScheduleExcelGridSheet = function(rows, selectedTeacher, sheetName) {
+        const headerMeta = window.findTeacherScheduleExcelDayHeader(rows);
+        if(!headerMeta) return [];
+        const periodCol = window.findTeacherScheduleExcelPeriodColumn(rows, headerMeta);
+        const teacherInfo = window.resolveTeacherScheduleImportTeacher('', selectedTeacher, sheetName);
+        const schedules = [];
+        for(let rowIndex = headerMeta.rowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+            const row = rows[rowIndex] || [];
+            if(!row.some(cell => window.normalizeTeacherScheduleImportText(cell))) continue;
+            let periodId = '';
+            const searchCols = periodCol >= 0 ? [periodCol] : Array.from({ length: Math.min(4, row.length) }, (_, idx) => idx);
+            for(let index = 0; index < searchCols.length; index += 1) {
+                periodId = window.normalizeTeacherScheduleAiPeriodId(row[searchCols[index]]);
+                if(periodId) break;
+            }
+            if(!periodId) continue;
+            headerMeta.dayColumns.forEach(dayMeta => {
+                const parsedCell = window.parseTeacherScheduleExcelCellValue(row[dayMeta.colIndex]);
+                if(!parsedCell) return;
+                schedules.push({
+                    day: dayMeta.day,
+                    periodId,
+                    courseName: parsedCell.courseName,
+                    location: parsedCell.location
+                });
+            });
+        }
+        if(!schedules.length) return [];
+        return [{
+            teacherName: (teacherInfo && teacherInfo.name) || '未命名老師',
+            department: (teacherInfo && teacherInfo.department) || '漫畫系',
+            schedules
+        }];
+    };
+
+    window.parseTeacherScheduleExcelFile = async function(file, selectedTeacher) {
+        const workbook = await window.readTeacherScheduleWorkbook(file);
+        let parsedResults = [];
+        (workbook.SheetNames || []).forEach(sheetName => {
+            const sheet = workbook.Sheets[sheetName];
+            if(!sheet) return;
+            const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+            if(!rows.length) return;
+            const listResults = window.parseTeacherScheduleExcelListSheet(rows, selectedTeacher, sheetName);
+            const gridResults = listResults.length ? [] : window.parseTeacherScheduleExcelGridSheet(rows, selectedTeacher, sheetName);
+            parsedResults = window.mergeTeacherScheduleRawImportResults(parsedResults, listResults.length ? listResults : gridResults);
+        });
+        return parsedResults;
+    };
+
+    window.extractTeacherScheduleJsonPayload = function(textOutput) {
+        const text = String(textOutput || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+        if(!text) return [];
+        try {
+            const direct = JSON.parse(text);
+            return Array.isArray(direct) ? direct : [direct];
+        } catch(_) {}
+        const arrayMatch = text.match(/\[[\s\S]*\]/);
+        if(arrayMatch) {
+            const parsedArray = JSON.parse(arrayMatch[0]);
+            return Array.isArray(parsedArray) ? parsedArray : [parsedArray];
+        }
+        const objectMatch = text.match(/\{[\s\S]*\}/);
+        if(objectMatch) {
+            const parsedObject = JSON.parse(objectMatch[0]);
+            return Array.isArray(parsedObject) ? parsedObject : [parsedObject];
+        }
+        return [];
+    };
+
+    window.canvasToBase64 = function(canvas, mimeType = 'image/jpeg', quality = 0.94) {
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        return dataUrl.split(',')[1] || '';
+    };
+
+    window.prepareTeacherScheduleGeminiCanvas = function(sourceCanvas) {
+        const maxWidth = 2200;
+        const maxHeight = 3200;
+        const scale = Math.min(1, maxWidth / sourceCanvas.width, maxHeight / sourceCanvas.height);
+        if(scale >= 0.999) return sourceCanvas;
+        const target = window.createCanvas(sourceCanvas.width * scale, sourceCanvas.height * scale);
+        const ctx = target.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, target.width, target.height);
+        ctx.drawImage(sourceCanvas, 0, 0, target.width, target.height);
+        return target;
+    };
+
+    window.getTeacherScheduleGeminiParts = async function(file) {
+        const lowerName = String(file && file.name || '').toLowerCase();
+        const isPdf = file && (file.type === 'application/pdf' || lowerName.endsWith('.pdf'));
+        if(isPdf) {
+            const pages = await window.renderTeacherSchedulePdfPages(file);
+            return pages.slice(0, 3).map((page, index) => {
+                const preparedCanvas = window.prepareTeacherScheduleGeminiCanvas(page.canvas);
+                return {
+                    label: page.label || (file.name + '｜第 ' + (index + 1) + ' 頁'),
+                    mimeType: 'image/jpeg',
+                    data: window.canvasToBase64(preparedCanvas, 'image/jpeg', 0.94)
+                };
+            });
+        }
+        const mimeType = file.type || 'image/jpeg';
+        const base64Data = await window.readTeacherScheduleAiFileAsBase64(file);
+        return [{ label: file.name, mimeType, data: base64Data }];
+    };
+
+    window.processTeacherScheduleWithGemini = async function(fileParts, selectedTeacher) {
+        const apiKey = String(window.teacherScheduleGeminiApiKey || '').trim();
+        if(!apiKey) throw new Error('Gemini API Key 尚未設定');
+        const normalizedParts = Array.isArray(fileParts) ? fileParts.filter(part => part && part.data && part.mimeType) : [];
+        if(!normalizedParts.length) throw new Error('沒有可供 Gemini 分析的檔案內容');
+        const teacherPrompt = (window.teacherList || []).map(teacher => teacher.name + (teacher.department ? '（' + teacher.department + '）' : '')).join('、');
+        const periodPrompt = (window.periodList || []).map(period => {
+            const timeText = period.start && period.end && !(period.start === '00:00' && period.end === '00:00') ? period.start + '-' + period.end : '時間未設定';
+            return '- periodId: "' + period.id + '"，名稱: "' + period.name + '"，時間: "' + timeText + '"';
+        }).join('\n');
+        const selectedTeacherPrompt = selectedTeacher
+            ? '本次後台目前選取的教師是：' + selectedTeacher.name + (selectedTeacher.department ? '（' + selectedTeacher.department + '）' : '') + '。若檔案內容是單一教師課表，teacherName 必須直接使用這個名字，不要自行猜測同姓或相近姓名；department 也請優先使用這位教師的系所。'
+            : '若檔案內容看起來是單一教師課表，請盡量辨識出正確教師姓名；若和現有名單相同，請直接使用現有名稱。';
+        const promptText =
+            '請分析這份教師課表檔案。附件可能是課表 PDF 轉成的高解析頁面圖片。請回傳嚴格 JSON，不要加入任何 Markdown、說明句或註解。\n' +
+            selectedTeacherPrompt + '\n' +
+            '現有教師名單：' + (teacherPrompt || '目前尚無教師名單') + '。\n' +
+            '系統節次如下：\n' + periodPrompt + '\n' +
+            '請輸出 JSON Array，每個物件格式：\n' +
+            '[{"teacherName":"老師姓名","department":"系所名稱","schedules":[{"day":1,"periodId":"1","courseName":"課程名稱","location":"L401"}]}]\n' +
+            '規則：\n' +
+            '1. 只輸出星期一到星期五，忽略星期六。\n' +
+            '2. 只輸出實際有課的節次，不要輸出空白格。\n' +
+            '3. periodId 必須對應系統節次 id，例如 1、2、3、4、中午、6、7、8、9、10。\n' +
+            '4. courseName 請只保留課名，不要把星期、時間、教師姓名、節次編號、亂碼、括號雜訊帶進去。\n' +
+            '5. location 盡量抓出教室代碼，例如 L401、Y205；若真的沒有再填「未指定」。\n' +
+            '6. 若檔案只有一位老師，請只回傳一位老師。\n' +
+            '7. 同一門課若連續佔多個節次，請分別輸出對應節次，但課名要保持一致。\n' +
+            '8. 若辨識不清，也請依格線位置、星期欄與節次欄推斷最合理的課表結果。\n' +
+            '9. 若發現文字像是時間、星期標題、頁首頁尾或系統欄位，請不要當成 courseName。';
+        const requestParts = [{ text: promptText }];
+        normalizedParts.forEach((part, index) => {
+            requestParts.push({ text: '附件 ' + (index + 1) + '：' + (part.label || ('課表頁面 ' + (index + 1))) });
+            requestParts.push({ inlineData: { mimeType: part.mimeType, data: part.data } });
+        });
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    role: 'user',
+                    parts: requestParts
+                }],
+                generationConfig: {
+                    temperature: 0.1,
+                    topP: 0.2,
+                    responseMimeType: 'application/json'
+                }
+            })
+        });
+        if(!response.ok) throw new Error('Gemini API 請求失敗：' + response.status);
+        const result = await response.json();
+        const outputText = ((((result || {}).candidates || [])[0] || {}).content || {}).parts
+            ? ((((result || {}).candidates || [])[0] || {}).content.parts || []).map(part => part && part.text ? part.text : '').join('\n').trim()
+            : '';
+        const parsed = window.extractTeacherScheduleJsonPayload(outputText);
+        if(!parsed.length) throw new Error('Gemini 沒有回傳可解析的課表 JSON');
+        return parsed;
+    };
+
+    window.bindTeacherScheduleImportToSelectedTeacher = function(rawResult, selectedTeacher) {
+        if(!selectedTeacher || !Array.isArray(rawResult) || !rawResult.length) return rawResult;
+        const slotMap = new Map();
+        rawResult.forEach(item => {
+            (item && (item.schedules || item.schedule) || []).forEach(schedule => {
+                const day = Number(schedule.day || schedule.weekday || schedule.weekDay);
+                const periodId = String(schedule.periodId || schedule.period || schedule.periodName || schedule.section || '').trim();
+                if(!day || !periodId) return;
+                const key = day + '-' + periodId;
+                slotMap.set(key, {
+                    day,
+                    periodId,
+                    courseName: String(schedule.courseName || schedule.course || '未命名課程').trim() || '未命名課程',
+                    location: String(schedule.location || schedule.classroom || '未指定').trim() || '未指定'
+                });
+            });
+        });
+        if(!slotMap.size) return rawResult;
+        return [{
+            teacherName: selectedTeacher.name,
+            department: selectedTeacher.department || '漫畫系',
+            schedules: Array.from(slotMap.values()).sort((a, b) => {
+                if(Number(a.day) !== Number(b.day)) return Number(a.day) - Number(b.day);
+                return window.getTeacherSchedulePeriodOrder(a.periodId) - window.getTeacherSchedulePeriodOrder(b.periodId);
+            })
+        }];
+    };
+
+    window.getTeacherScheduleTemplateGridMeta = function(pageCanvas) {
+        const periodIds = window.getTeacherScheduleTemplatePeriodIds();
+        const detectedGrid = window.detectTeacherScheduleTemplateGrid(pageCanvas);
+        const dayBounds = detectedGrid && detectedGrid.dayBounds && detectedGrid.dayBounds.length >= 7
+            ? detectedGrid.dayBounds
+            : [0.23, 0.313, 0.396, 0.479, 0.562, 0.645, 0.728].map(ratio => pageCanvas.width * ratio);
+        const rowBounds = detectedGrid && detectedGrid.rowBounds && detectedGrid.rowBounds.length >= 11
+            ? detectedGrid.rowBounds
+            : [0.102, 0.183, 0.264, 0.344, 0.425, 0.506, 0.587, 0.668, 0.749, 0.829, 0.91].map(ratio => pageCanvas.height * ratio);
+        return { periodIds, dayBounds, rowBounds };
+    };
+
+    window.prepareTeacherScheduleGeminiCellCanvas = function(sourceCanvas) {
+        const minWidth = 900;
+        const minHeight = 520;
+        const scale = Math.max(1, Math.min(4.2, minWidth / sourceCanvas.width, minHeight / sourceCanvas.height));
+        const target = window.createCanvas(sourceCanvas.width * scale, sourceCanvas.height * scale);
+        const ctx = target.getContext('2d', { willReadFrequently: true });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, target.width, target.height);
+        ctx.drawImage(sourceCanvas, 0, 0, target.width, target.height);
+        const imageData = ctx.getImageData(0, 0, target.width, target.height);
+        const data = imageData.data;
+        for(let i = 0; i < data.length; i += 4) {
+            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            const adjusted = gray > 238 ? 255 : Math.max(0, Math.min(255, gray * 0.9));
+            data[i] = adjusted;
+            data[i + 1] = adjusted;
+            data[i + 2] = adjusted;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return target;
+    };
+
+    window.buildTeacherScheduleGeminiCellTasks = function(pageCanvas, fileLabel) {
+        const { periodIds, dayBounds, rowBounds } = window.getTeacherScheduleTemplateGridMeta(pageCanvas);
+        const tasks = [];
+        for(let rowIndex = 0; rowIndex < periodIds.length; rowIndex += 1) {
+            for(let day = 1; day <= 5; day += 1) {
+                const left = dayBounds[day];
+                const right = dayBounds[day + 1];
+                const top = rowBounds[rowIndex];
+                const bottom = rowBounds[rowIndex + 1];
+                const crop = window.cropCanvas(pageCanvas, {
+                    x: left + (right - left) * 0.05,
+                    y: top + (bottom - top) * 0.08,
+                    width: (right - left) * 0.9,
+                    height: (bottom - top) * 0.84
+                });
+                if(window.getTeacherScheduleCanvasInkRatio(crop) < 0.0045) continue;
+                const prepared = window.prepareTeacherScheduleGeminiCellCanvas(crop);
+                const weekday = (window.teacherScheduleWeekdays || []).find(item => Number(item.id) === day);
+                const period = (window.periodList || []).find(item => String(item.id) === String(periodIds[rowIndex]));
+                tasks.push({
+                    day,
+                    periodId: periodIds[rowIndex],
+                    label: (fileLabel || '課表') + '｜' + (weekday ? weekday.fullLabel : ('星期' + day)) + '｜' + (period ? period.name : periodIds[rowIndex]),
+                    imageMimeType: 'image/png',
+                    imageData: window.canvasToBase64(prepared, 'image/png')
+                });
+            }
+        }
+        return tasks;
+    };
+
+    window.processTeacherScheduleCellBatchWithGemini = async function(cellBatch, selectedTeacher) {
+        const apiKey = String(window.teacherScheduleGeminiApiKey || '').trim();
+        if(!apiKey) throw new Error('Gemini API Key 尚未設定');
+        if(!Array.isArray(cellBatch) || !cellBatch.length) return [];
+        const locationPrompt = (window.keyList || []).map(item => String(item || '').replace(/^\[.*?\]\s*/, '').trim()).filter(Boolean).join('、');
+        const selectedTeacherPrompt = selectedTeacher
+            ? '目前後台選定的教師是：' + selectedTeacher.name + (selectedTeacher.department ? '（' + selectedTeacher.department + '）' : '') + '。請專注辨識課程內容，不需要猜教師姓名。'
+            : '請專注辨識課程內容，不需要猜教師姓名。';
+        const promptText =
+            '你會收到多張「單一課表儲存格」圖片，每張圖只對應一個已知的星期與節次。請只辨識每格真正的課程內容，並回傳嚴格 JSON Array，不要加入 Markdown 或額外說明。\n' +
+            selectedTeacherPrompt + '\n' +
+            '常見教室代碼：' + (locationPrompt || 'L401、L402、Y103') + '。\n' +
+            '輸出格式：' +
+            '[{"index":0,"empty":false,"courseName":"課程名稱","location":"L401"}]\n' +
+            '規則：\n' +
+            '1. index 必須對應我提供的 index。\n' +
+            '2. 如果該格沒有課、內容太模糊、或只有空白，請回傳 empty=true，courseName/location 皆留空字串。\n' +
+            '3. courseName 只保留課名，不要帶入星期、時間、教師姓名、節次、亂碼、教室代碼或頁首頁尾內容。\n' +
+            '4. location 只保留教室代碼，例如 L401、L402、Y103；若看不出來就留空。\n' +
+            '5. 若同一格有兩行，通常上面是課名、下面是教室。\n' +
+            '6. 不要亂猜，不確定時寧可回傳 empty=true 或較短但可信的課名。';
+        const requestParts = [{ text: promptText }];
+        cellBatch.forEach((cell, index) => {
+            requestParts.push({ text: 'index=' + index + '，' + cell.label + '，day=' + cell.day + '，periodId=' + cell.periodId });
+            requestParts.push({ inlineData: { mimeType: cell.imageMimeType, data: cell.imageData } });
+        });
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(apiKey), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{
+                    role: 'user',
+                    parts: requestParts
+                }],
+                generationConfig: {
+                    temperature: 0.05,
+                    topP: 0.15,
+                    responseMimeType: 'application/json'
+                }
+            })
+        });
+        if(!response.ok) throw new Error('Gemini 儲存格辨識失敗：' + response.status);
+        const result = await response.json();
+        const outputText = ((((result || {}).candidates || [])[0] || {}).content || {}).parts
+            ? ((((result || {}).candidates || [])[0] || {}).content.parts || []).map(part => part && part.text ? part.text : '').join('\n').trim()
+            : '';
+        const parsed = window.extractTeacherScheduleJsonPayload(outputText);
+        if(!parsed.length) throw new Error('Gemini 沒有回傳可解析的儲存格 JSON');
+        return parsed;
+    };
+
+    window.normalizeTeacherScheduleGeminiCellResults = function(rawItems, cellBatch) {
+        const normalized = [];
+        const rawList = Array.isArray(rawItems) ? rawItems : [];
+        rawList.forEach((item, fallbackIndex) => {
+            const index = Number(item && item.index);
+            const cell = cellBatch[Number.isInteger(index) && cellBatch[index] ? index : fallbackIndex];
+            if(!cell) return;
+            const empty = !!(item && (item.empty === true || item.isEmpty === true));
+            let courseName = String((item && (item.courseName || item.course || item.text)) || '').trim();
+            let location = String((item && (item.location || item.classroom)) || '').trim();
+            if(location) courseName = courseName.replace(location, ' ').replace(/\s+/g, ' ').trim();
+            const extractedLocation = window.extractTeacherScheduleLocation(courseName);
+            if(!location && extractedLocation) {
+                location = extractedLocation;
+                courseName = courseName.replace(extractedLocation, ' ').replace(/\s+/g, ' ').trim();
+            }
+            courseName = courseName
+                .replace(/^(課名|課程|科目)[:：]?\s*/,'')
+                .replace(/^(星期[一二三四五]|第?[一二三四五六七八九十\d]+節)\s*/g, '')
+                .replace(/[|｜]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const meaningful = courseName.replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, '');
+            if(empty || meaningful.length < 2) return;
+            normalized.push({
+                day: cell.day,
+                periodId: cell.periodId,
+                courseName,
+                location: location || '未指定'
+            });
+        });
+        return normalized;
+    };
+
+    window.parseTeacherScheduleFileWithGeminiCells = async function(file, selectedTeacher) {
+        const pages = await window.getTeacherScheduleImportPages(file);
+        const allSchedules = [];
+        for(let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+            const page = pages[pageIndex];
+            const cellTasks = window.buildTeacherScheduleGeminiCellTasks(page.canvas, page.label);
+            if(!cellTasks.length) continue;
+            const batchSize = 4;
+            for(let start = 0; start < cellTasks.length; start += batchSize) {
+                const batch = cellTasks.slice(start, start + batchSize);
+                window.teacherScheduleAiState.progress = '正在解析 ' + page.label + ' 的課表格子（' + (start + 1) + ' - ' + Math.min(start + batchSize, cellTasks.length) + ' / ' + cellTasks.length + '）';
+                window.renderTeacherScheduleAiState();
+                const batchRaw = await window.processTeacherScheduleCellBatchWithGemini(batch, selectedTeacher);
+                allSchedules.push(...window.normalizeTeacherScheduleGeminiCellResults(batchRaw, batch));
+            }
+        }
+        const uniqueSchedules = Array.from(new Map(allSchedules.map(item => [item.day + '-' + item.periodId, item])).values()).sort((a, b) => {
+            if(Number(a.day) !== Number(b.day)) return Number(a.day) - Number(b.day);
+            return window.getTeacherSchedulePeriodOrder(a.periodId) - window.getTeacherSchedulePeriodOrder(b.periodId);
+        });
+        if(!uniqueSchedules.length) return [];
+        const teacher = selectedTeacher || { name: '未命名老師', department: '漫畫系' };
+        return [{
+            teacherName: teacher.name || '未命名老師',
+            department: teacher.department || '漫畫系',
+            schedules: uniqueSchedules
+        }];
+    };
+
+    window.readTeacherScheduleFileAsArrayBuffer = function(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = event => resolve(event && event.target ? event.target.result : null);
+            reader.onerror = err => reject(err);
+            reader.readAsArrayBuffer(file);
+        });
+    };
+
+    window.createCanvas = function(width, height) {
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(width));
+        canvas.height = Math.max(1, Math.round(height));
+        return canvas;
+    };
+
+    window.rotateCanvas = function(sourceCanvas, degrees) {
+        const turns = (((degrees / 90) % 4) + 4) % 4;
+        if(turns === 0) return sourceCanvas;
+        const target = window.createCanvas(turns % 2 === 0 ? sourceCanvas.width : sourceCanvas.height, turns % 2 === 0 ? sourceCanvas.height : sourceCanvas.width);
+        const ctx = target.getContext('2d');
+        ctx.translate(target.width / 2, target.height / 2);
+        ctx.rotate(turns * Math.PI / 2);
+        ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+        return target;
+    };
+
+    window.cropCanvas = function(sourceCanvas, rect) {
+        const x = Math.max(0, Math.round(rect.x));
+        const y = Math.max(0, Math.round(rect.y));
+        const width = Math.min(sourceCanvas.width - x, Math.max(1, Math.round(rect.width)));
+        const height = Math.min(sourceCanvas.height - y, Math.max(1, Math.round(rect.height)));
+        const target = window.createCanvas(width, height);
+        target.getContext('2d').drawImage(sourceCanvas, x, y, width, height, 0, 0, width, height);
+        return target;
+    };
+
+    window.normalizeTeacherScheduleCanvas = function(canvas) {
+        return canvas.width > canvas.height ? window.rotateCanvas(canvas, -90) : canvas;
+    };
+
+    window.prepareTeacherScheduleOcrCanvas = function(sourceCanvas, options = {}) {
+        const scale = options.scale || 2.8;
+        const threshold = typeof options.threshold === 'number' ? options.threshold : 208;
+        const target = window.createCanvas(sourceCanvas.width * scale, sourceCanvas.height * scale);
+        const ctx = target.getContext('2d', { willReadFrequently: true });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, target.width, target.height);
+        ctx.drawImage(sourceCanvas, 0, 0, target.width, target.height);
+        const imageData = ctx.getImageData(0, 0, target.width, target.height);
+        const data = imageData.data;
+        for(let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const value = gray > threshold ? 255 : 0;
+            data[i] = value;
+            data[i + 1] = value;
+            data[i + 2] = value;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return target;
+    };
+
+    window.getTeacherScheduleCanvasInkRatio = function(canvas) {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let darkCount = 0;
+        const total = imageData.length / 4;
+        for(let i = 0; i < imageData.length; i += 4) {
+            if(imageData[i] < 180) darkCount += 1;
+        }
+        return total ? darkCount / total : 0;
+    };
+
+    window.getTeacherScheduleProjection = function(canvas, direction, bounds = {}, threshold = 205) {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const x1 = Math.max(0, Math.round(bounds.x1 || 0));
+        const y1 = Math.max(0, Math.round(bounds.y1 || 0));
+        const x2 = Math.min(canvas.width, Math.round(bounds.x2 || canvas.width));
+        const y2 = Math.min(canvas.height, Math.round(bounds.y2 || canvas.height));
+        const width = Math.max(1, x2 - x1);
+        const height = Math.max(1, y2 - y1);
+        const data = ctx.getImageData(x1, y1, width, height).data;
+        const result = new Array(direction === 'vertical' ? width : height).fill(0);
+        for(let y = 0; y < height; y += 1) {
+            for(let x = 0; x < width; x += 1) {
+                const idx = (y * width + x) * 4;
+                const gray = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+                if(gray < threshold) {
+                    if(direction === 'vertical') result[x] += 1;
+                    else result[y] += 1;
+                }
+            }
+        }
+        return result;
+    };
+
+    window.findTeacherScheduleLineCenters = function(projection, minStrength, offset = 0) {
+        const centers = [];
+        let start = -1;
+        for(let index = 0; index <= projection.length; index += 1) {
+            const value = index < projection.length ? projection[index] : 0;
+            if(value >= minStrength) {
+                if(start === -1) start = index;
+            } else if(start !== -1) {
+                const end = index - 1;
+                centers.push(Math.round((start + end) / 2) + offset);
+                start = -1;
+            }
+        }
+        return centers;
+    };
+
+    window.findTeacherScheduleBestGapRun = function(positions, gapCount, minGap) {
+        if(!Array.isArray(positions) || positions.length < gapCount + 1) return null;
+        let best = null;
+        for(let start = 0; start <= positions.length - (gapCount + 1); start += 1) {
+            const slice = positions.slice(start, start + gapCount + 1);
+            const gaps = [];
+            let isValid = true;
+            for(let i = 0; i < slice.length - 1; i += 1) {
+                const gap = slice[i + 1] - slice[i];
+                gaps.push(gap);
+                if(gap < minGap) {
+                    isValid = false;
+                    break;
+                }
+            }
+            if(!isValid) continue;
+            const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+            const variance = gaps.reduce((sum, gap) => sum + Math.pow(gap - mean, 2), 0) / gaps.length;
+            const deviation = Math.sqrt(variance);
+            const score = mean - deviation * 2.4;
+            if(!best || score > best.score) {
+                best = { start, slice, gaps, score, mean, deviation };
+            }
+        }
+        return best;
+    };
+
+    window.detectTeacherScheduleTemplateGrid = function(pageCanvas) {
+        const verticalProjection = window.getTeacherScheduleProjection(pageCanvas, 'vertical', {
+            x1: pageCanvas.width * 0.08,
+            x2: pageCanvas.width * 0.94,
+            y1: pageCanvas.height * 0.08,
+            y2: pageCanvas.height * 0.93
+        }, 214);
+        const verticalLines = window.findTeacherScheduleLineCenters(verticalProjection, Math.max(60, pageCanvas.height * 0.42), pageCanvas.width * 0.08);
+        const verticalRun = window.findTeacherScheduleBestGapRun(verticalLines, 6, pageCanvas.width * 0.055);
+        if(!verticalRun) return null;
+
+        const dayBounds = verticalRun.slice;
+        const horizontalProjection = window.getTeacherScheduleProjection(pageCanvas, 'horizontal', {
+            x1: dayBounds[0],
+            x2: dayBounds[dayBounds.length - 1],
+            y1: pageCanvas.height * 0.08,
+            y2: pageCanvas.height * 0.95
+        }, 214);
+        const horizontalLines = window.findTeacherScheduleLineCenters(horizontalProjection, Math.max(60, (dayBounds[dayBounds.length - 1] - dayBounds[0]) * 0.48), pageCanvas.height * 0.08);
+        const horizontalRun = window.findTeacherScheduleBestGapRun(horizontalLines, 10, pageCanvas.height * 0.035);
+        if(!horizontalRun) return null;
+
+        return {
+            dayBounds,
+            rowBounds: horizontalRun.slice
+        };
+    };
+
+    window.loadTeacherScheduleImageCanvas = function(file) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const image = new Image();
+            image.onload = () => {
+                const canvas = window.createCanvas(image.naturalWidth, image.naturalHeight);
+                canvas.getContext('2d').drawImage(image, 0, 0);
+                URL.revokeObjectURL(url);
+                resolve([{ canvas: window.normalizeTeacherScheduleCanvas(canvas), label: file.name }]);
+            };
+            image.onerror = err => {
+                URL.revokeObjectURL(url);
+                reject(err);
+            };
+            image.src = url;
+        });
+    };
+
+    window.renderTeacherSchedulePdfPages = async function(file) {
+        if(!window.pdfjsLib) throw new Error('PDF 模組尚未載入，請重新整理後再試一次。');
+        if(window.pdfjsLib.GlobalWorkerOptions) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        const arrayBuffer = await window.readTeacherScheduleFileAsArrayBuffer(file);
+        const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer, disableWorker: true });
+        const pdf = await loadingTask.promise;
+        const pages = [];
+        for(let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const page = await pdf.getPage(pageNumber);
+            const viewport = page.getViewport({ scale: 4.6 });
+            const canvas = window.createCanvas(viewport.width, viewport.height);
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+            pages.push({ canvas: window.normalizeTeacherScheduleCanvas(canvas), label: file.name + '｜第 ' + pageNumber + ' 頁' });
+        }
+        return pages;
+    };
+
+    window.getTeacherScheduleImportPages = async function(file) {
+        const lowerName = String(file && file.name || '').toLowerCase();
+        const isPdf = file && (file.type === 'application/pdf' || lowerName.endsWith('.pdf'));
+        return isPdf ? window.renderTeacherSchedulePdfPages(file) : window.loadTeacherScheduleImageCanvas(file);
+    };
+
+    window.normalizeTeacherScheduleOcrText = function(text) {
+        return String(text || '')
+            .normalize('NFKC')
+            .replace(/[|｜]/g, ' ')
+            .replace(/\s+/g, '')
+            .trim();
+    };
+
+    window.findBestTeacherScheduleMatch = function(rawText) {
+        const normalizedRaw = window.normalizeTeacherScheduleOcrText(rawText);
+        if(!normalizedRaw) return null;
+        let bestTeacher = null;
+        let bestScore = 0;
+        (window.teacherList || []).forEach(teacher => {
+            const target = window.normalizeTeacherScheduleOcrText(teacher.name);
+            if(!target) return;
+            let score = 0;
+            if(normalizedRaw.includes(target)) score = target.length + 10;
+            else {
+                const uniqueChars = Array.from(new Set(target.split('')));
+                score = uniqueChars.filter(char => normalizedRaw.includes(char)).length;
+            }
+            if(score > bestScore) {
+                bestScore = score;
+                bestTeacher = teacher;
+            }
+        });
+        return bestScore >= 2 ? bestTeacher : null;
+    };
+
+    window.extractTeacherScheduleNameCandidate = function(rawText) {
+        const compact = window.normalizeTeacherScheduleOcrText(rawText);
+        const explicit = compact.match(/([\u4e00-\u9fff]{2,4})老師/);
+        if(explicit) return explicit[1];
+        const candidates = compact.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+        const blacklist = ['教師課表', '授課時數', '台南應用科技大學', '學年度', '授課時間表', '星期六', '星期五', '星期四', '星期三', '星期二', '星期一', '資產'];
+        return candidates.find(item => !blacklist.some(word => item === word || word.includes(item))) || '';
+    };
+
+    window.runTeacherScheduleOcr = async function(worker, canvas, parameters = {}) {
+        if(worker.setParameters) await worker.setParameters(parameters);
+        const result = await worker.recognize(canvas);
+        return String(result && result.data && result.data.text || '').trim();
+    };
+
+    window.matchTeacherSchedulePageTeacher = async function(worker, pageCanvas, fileLabel) {
+        const teacherArea = window.cropCanvas(pageCanvas, {
+            x: pageCanvas.width * 0.008,
+            y: pageCanvas.height * 0.11,
+            width: pageCanvas.width * 0.16,
+            height: pageCanvas.height * 0.77
+        });
+        const teacherSamples = [
+            window.rotateCanvas(teacherArea, 90),
+            window.rotateCanvas(teacherArea, -90),
+            window.rotateCanvas(window.cropCanvas(teacherArea, {
+                x: teacherArea.width * 0.05,
+                y: teacherArea.height * 0.02,
+                width: teacherArea.width * 0.9,
+                height: teacherArea.height * 0.96
+            }), 90)
+        ];
+        const rawTexts = [];
+        for(let index = 0; index < teacherSamples.length; index += 1) {
+            const sample = teacherSamples[index];
+            const prepared = window.prepareTeacherScheduleOcrCanvas(sample, { scale: 3.6, threshold: index === 0 ? 214 : 224 });
+            rawTexts.push(await window.runTeacherScheduleOcr(worker, prepared, { tessedit_pageseg_mode: index === 1 ? '5' : '6', preserve_interword_spaces: '1' }));
+        }
+        rawTexts.push(String(fileLabel || '').replace(/\.[^.]+$/, ''));
+        const matchedTeacher = window.findBestTeacherScheduleMatch(rawTexts.join(' '));
+        if(matchedTeacher) {
+            return {
+                teacherName: matchedTeacher.name,
+                department: matchedTeacher.department || '漫畫系',
+                scheduleKey: matchedTeacher.scheduleKey
+            };
+        }
+        const selectedTeacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
+        const extractedName = window.extractTeacherScheduleNameCandidate(rawTexts.join(' ')) || String(fileLabel || '未命名老師').replace(/\.[^.]+$/, '');
+        if(selectedTeacher && (!extractedName || /^資產/i.test(extractedName) || /^\d+$/.test(extractedName))) {
+            return {
+                teacherName: selectedTeacher.name,
+                department: selectedTeacher.department || '漫畫系',
+                scheduleKey: selectedTeacher.scheduleKey
+            };
+        }
+        return {
+            teacherName: extractedName || '未命名老師',
+            department: '漫畫系',
+            scheduleKey: ''
+        };
+    };
+
+    window.extractTeacherScheduleLocation = function(text) {
+        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+        const locationMatch = normalized.match(/(Y棟一樓走廊【櫥窗】|[A-Z]{1,2}\d{3,4}(?:-\d+)?(?:\s*展覽空間)?)/i);
+        return locationMatch ? locationMatch[1].replace(/\s+/g, ' ').trim() : '';
+    };
+
+    window.parseTeacherScheduleCellText = function(rawText) {
+        const lines = String(rawText || '')
+            .split(/\n+/)
+            .map(line => line.replace(/[|｜]/g, ' ').replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
+        if(!lines.length) return null;
+        const mergedText = lines.join(' ').trim();
+        const location = window.extractTeacherScheduleLocation(mergedText);
+        let courseName = mergedText;
+        if(location) courseName = courseName.replace(location, ' ').replace(/\s+/g, ' ').trim();
+        courseName = courseName.replace(/^(星期[一二三四五六日]|第?[一二三四五六七八九十\d]+節)\s*/g, '').trim();
+        const meaningfulText = courseName.replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, '');
+        if(meaningfulText.length < 3) return null;
+        return {
+            courseName: courseName || '未命名課程',
+            location: location || '未指定'
+        };
+    };
+
+    window.readTeacherScheduleCellContent = async function(worker, cropCanvas) {
+        const variants = [
+            (() => {
+                const target = window.createCanvas(cropCanvas.width * 3.8, cropCanvas.height * 3.8);
+                const ctx = target.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, target.width, target.height);
+                ctx.drawImage(cropCanvas, 0, 0, target.width, target.height);
+                return target;
+            })(),
+            window.prepareTeacherScheduleOcrCanvas(cropCanvas, { scale: 3.4, threshold: 208 }),
+            window.prepareTeacherScheduleOcrCanvas(cropCanvas, { scale: 3.6, threshold: 226 })
+        ];
+        let bestText = '';
+        for(let index = 0; index < variants.length; index += 1) {
+            const text = await window.runTeacherScheduleOcr(worker, variants[index], {
+                tessedit_pageseg_mode: index === 0 ? '6' : (index === 1 ? '11' : '4'),
+                preserve_interword_spaces: '1'
+            });
+            if(text.replace(/\s+/g, '').length > bestText.replace(/\s+/g, '').length) bestText = text;
+            if(bestText.replace(/\s+/g, '').length >= 6) break;
+        }
+        return window.parseTeacherScheduleCellText(bestText);
+    };
+
+    window.getTeacherScheduleTemplatePeriodIds = function() {
+        const ids = (window.periodList || []).slice(0, 10).map(period => String(period.id));
+        return ids.length === 10 ? ids : ['1', '2', '3', '4', '中午', '6', '7', '8', '9', '10'];
+    };
+
+    window.parseTeacherScheduleTemplateCanvas = async function(worker, pageCanvas, fileLabel) {
+        const teacherInfo = await window.matchTeacherSchedulePageTeacher(worker, pageCanvas, fileLabel);
+        const { periodIds, dayBounds, rowBounds } = window.getTeacherScheduleTemplateGridMeta(pageCanvas);
+        const schedules = [];
+
+        for(let rowIndex = 0; rowIndex < periodIds.length; rowIndex += 1) {
+            for(let day = 1; day <= 5; day += 1) {
+                const left = dayBounds[day];
+                const right = dayBounds[day + 1];
+                const top = rowBounds[rowIndex];
+                const bottom = rowBounds[rowIndex + 1];
+                const crop = window.cropCanvas(pageCanvas, {
+                    x: left + (right - left) * 0.1,
+                    y: top + (bottom - top) * 0.12,
+                    width: (right - left) * 0.82,
+                    height: (bottom - top) * 0.76
+                });
+                if(window.getTeacherScheduleCanvasInkRatio(crop) < 0.008) continue;
+                const parsedCell = await window.readTeacherScheduleCellContent(worker, crop);
+                if(!parsedCell) continue;
+                schedules.push({
+                    day,
+                    periodId: periodIds[rowIndex],
+                    courseName: parsedCell.courseName,
+                    location: parsedCell.location
+                });
+            }
+        }
+
+        if(!schedules.length) return null;
+        return {
+            teacherName: teacherInfo.teacherName,
+            department: teacherInfo.department || '漫畫系',
+            schedules
+        };
+    };
+
+    window.parseTeacherScheduleTemplateFile = async function(file) {
+        if(!window.Tesseract) throw new Error('OCR 模組尚未載入，請確認目前網路可讀取外部腳本後重新整理頁面。');
+        const pages = await window.getTeacherScheduleImportPages(file);
+        const worker = await window.Tesseract.createWorker('chi_tra+eng');
+        try {
+            const parsedResults = [];
+            for(let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+                const page = pages[pageIndex];
+                window.teacherScheduleAiState.progress = '正在辨識 ' + page.label + '（第 ' + (pageIndex + 1) + ' / ' + pages.length + ' 頁）';
+                window.renderTeacherScheduleAiState();
+                const parsed = await window.parseTeacherScheduleTemplateCanvas(worker, page.canvas, page.label);
+                if(parsed) parsedResults.push(parsed);
+            }
+            return parsedResults;
+        } finally {
+            if(worker && worker.terminate) await worker.terminate();
+        }
+    };
+
+    window.handleTeacherScheduleExcelImport = async function(event) {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以使用課表匯入', 'error');
+        const files = Array.from((event && event.target && event.target.files) || []);
+        if(!files.length) return;
+        window.teacherScheduleAiState = { isProcessing: true, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
+        window.renderTeacherScheduleAiState();
+        let mergedResults = [];
+        try {
+            const selectedTeacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
+            for(let index = 0; index < files.length; index += 1) {
+                const file = files[index];
+                window.teacherScheduleAiState.progress = '正在解析 Excel ' + (index + 1) + ' / ' + files.length + '：' + file.name;
+                window.renderTeacherScheduleAiState();
+                let rawResult = await window.parseTeacherScheduleExcelFile(file, selectedTeacher);
+                if(selectedTeacher && window.shouldBindExcelImportToSelectedTeacher(rawResult)) {
+                    rawResult = window.bindTeacherScheduleImportToSelectedTeacher(rawResult, selectedTeacher);
+                }
+                const mapped = window.mapTeacherScheduleAiResults(rawResult);
+                mergedResults = window.mergeTeacherScheduleAiParsedData(mergedResults, mapped);
+                window.teacherScheduleAiState.parsedDataList = mergedResults;
+                window.renderTeacherScheduleAiState();
+            }
+            if(!mergedResults.length) {
+                window.teacherScheduleAiState.errorMsg = 'Excel 內沒有找到可辨識的課表資料。請確認內容包含星期、節次與課程欄位，或使用週課表格式再試一次。';
+            }
+        } catch(error) {
+            window.teacherScheduleAiState.errorMsg = 'Excel 匯入失敗：' + (error && error.message ? error.message : '未知錯誤');
+        } finally {
+            window.teacherScheduleAiState.isProcessing = false;
+            window.teacherScheduleAiState.progress = '';
+            if(event && event.target) event.target.value = '';
+            window.renderTeacherScheduleAiState();
+        }
+    };
+
+    window.handleTeacherScheduleAiImport = async function(event) {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以使用課表匯入', 'error');
+        const files = Array.from((event && event.target && event.target.files) || []);
+        if(!files.length) return;
+        window.teacherScheduleAiState = { isProcessing: true, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
+        window.renderTeacherScheduleAiState();
+        let mergedResults = [];
+        try {
+            const selectedTeacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
+            for(let index = 0; index < files.length; index += 1) {
+                const file = files[index];
+                window.teacherScheduleAiState.progress = '正在處理檔案 ' + (index + 1) + ' / ' + files.length + '：' + file.name + '（Gemini AI）';
+                window.renderTeacherScheduleAiState();
+                let rawResult = [];
+                try {
+                    rawResult = await window.parseTeacherScheduleFileWithGeminiCells(file, selectedTeacher);
+                    rawResult = window.bindTeacherScheduleImportToSelectedTeacher(rawResult, selectedTeacher);
+                    if(!rawResult.length) throw new Error('cell-gemini-empty');
+                } catch(aiCellError) {
+                    try {
+                        window.teacherScheduleAiState.progress = '單格 Gemini 未取得有效結果，改用整頁 Gemini：' + file.name;
+                        window.renderTeacherScheduleAiState();
+                        const geminiParts = await window.getTeacherScheduleGeminiParts(file);
+                        rawResult = await window.processTeacherScheduleWithGemini(geminiParts, selectedTeacher);
+                        rawResult = window.bindTeacherScheduleImportToSelectedTeacher(rawResult, selectedTeacher);
+                        if(!rawResult.length) throw new Error('page-gemini-empty');
+                    } catch(aiPageError) {
+                        window.teacherScheduleAiState.progress = 'Gemini AI 未取得有效結果，改用固定版型備援：' + file.name;
+                        window.renderTeacherScheduleAiState();
+                        rawResult = await window.parseTeacherScheduleTemplateFile(file);
+                        rawResult = window.bindTeacherScheduleImportToSelectedTeacher(rawResult, selectedTeacher);
+                    }
+                }
+                const mapped = window.mapTeacherScheduleAiResults(rawResult);
+                mergedResults = window.mergeTeacherScheduleAiParsedData(mergedResults, mapped);
+                window.teacherScheduleAiState.parsedDataList = mergedResults;
+                window.renderTeacherScheduleAiState();
+            }
+            if(!mergedResults.length) {
+                window.teacherScheduleAiState.errorMsg = 'AI 與備援辨識都未能取得有效課表。建議先在後台選好教師，再重新上傳同一份 PDF。';
+            }
+        } catch(error) {
+            window.teacherScheduleAiState.errorMsg = '課表解析失敗：' + (error && error.message ? error.message : '未知錯誤');
+        } finally {
+            window.teacherScheduleAiState.isProcessing = false;
+            window.teacherScheduleAiState.progress = '';
+            if(event && event.target) event.target.value = '';
+            window.renderTeacherScheduleAiState();
+        }
+    };
+
+    window.clearTeacherScheduleAiPreview = function() {
+        window.teacherScheduleAiState = { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
+        window.renderTeacherScheduleAiState();
+    };
+
+    window.confirmTeacherScheduleAiImport = async function() {
+        const parsedDataList = (window.teacherScheduleAiState && window.teacherScheduleAiState.parsedDataList) || [];
+        if(!parsedDataList.length) return window.showToast('目前沒有可匯入的解析結果', 'error');
+        parsedDataList.forEach(item => {
+            const existingTeacherIndex = (window.teacherList || []).findIndex(teacher => teacher.scheduleKey === item.scheduleKey || teacher.name === item.teacherName);
+            if(existingTeacherIndex >= 0) {
+                if(!window.teacherList[existingTeacherIndex].department && item.department) {
+                    window.teacherList[existingTeacherIndex].department = item.department;
+                }
+            } else {
+                (window.teacherList = window.teacherList || []).push({
+                    name: item.teacherName,
+                    empId: '',
+                    department: item.department || '漫畫系',
+                    position: '專任',
+                    identity: '一般教師',
+                    phone: '',
+                    email: '',
+                    scheduleKey: item.scheduleKey
+                });
+            }
+            window.teacherSchedules = (window.teacherSchedules || []).filter(schedule => schedule.scheduleKey !== item.scheduleKey);
+            window.teacherSchedules.push(...(item.schedules || []).map(schedule => ({ ...schedule })));
+        });
+        window.showToast('同步中...', 'success');
+        if(await window.saveSettingsToCloud()) {
+            window.teacherScheduleAiState = { isProcessing: false, progress: '', errorMsg: '', successMsg: '成功匯入 ' + parsedDataList.length + ' 位教師的課表。', parsedDataList: [] };
+            window.syncTeacherScheduleViews();
+            window.renderAdminTeachers();
+            window.renderTeacherScheduleAiState();
+            window.showToast('課表已匯入');
+        } else {
+            window.teacherScheduleAiState.errorMsg = '課表已解析，但寫入正式資料失敗。';
+            window.renderTeacherScheduleAiState();
+            window.showToast('匯入失敗', 'error');
+        }
+    };
+
+    window.closeTeacherScheduleSearchResults = function() {
+        const results = $('teacher-schedule-search-results');
+        if(results) {
+            results.classList.add('hidden');
+            results.style.display = 'none';
+        }
+    };
+
+    window.renderTeacherScheduleSearchResults = function(query) {
+        const results = $('teacher-schedule-search-results');
+        if(!results) return;
+        const matches = window.findTeacherScheduleMatches(query).slice(0, 8);
+        if(!String(query || '').trim()) {
+            window.closeTeacherScheduleSearchResults();
+            return;
+        }
+        if(matches.length === 0) {
+            results.innerHTML = '<div class="px-4 py-4 text-center text-sm font-bold text-slate-400">查無符合的教師資料</div>';
+        } else {
+            results.innerHTML = matches.map(teacher => (
+                '<button type="button" class="teacher-schedule-result" data-schedule-key="' + window.escapeHtml(teacher.scheduleKey) + '" onclick="window.selectTeacherScheduleTeacher(this.dataset.scheduleKey)">' +
+                    '<div class="min-w-0">' +
+                        '<div class="truncate text-[0.98rem] font-black text-slate-800">' + window.escapeHtml(teacher.name || '未命名教師') + '</div>' +
+                        '<div class="mt-1 truncate text-xs font-medium text-slate-500">' + window.escapeHtml(teacher.department || '未指定系所') + '</div>' +
+                    '</div>' +
+                '</button>'
+            )).join('');
+        }
+        results.classList.remove('hidden');
+        results.style.display = 'block';
+    };
+
+    window.handleTeacherScheduleSearchInput = function() {
+        const input = $('teacher-schedule-search-input');
+        window.renderTeacherScheduleSearchResults(input ? input.value : '');
+    };
+
+    window.selectTeacherScheduleTeacher = function(scheduleKey) {
+        const teacher = window.getTeacherByScheduleKey(scheduleKey);
+        if(!teacher) return window.showToast('找不到教師資料', 'error');
+        window.currentTeacherScheduleTeacherKey = scheduleKey;
+        if($('teacher-schedule-search-input')) $('teacher-schedule-search-input').value = teacher.name || '';
+        window.closeTeacherScheduleSearchResults();
+        window.renderTeacherSchedulePublicView();
+    };
+
+    window.clearTeacherScheduleSelection = function() {
+        window.currentTeacherScheduleTeacherKey = '';
+        if($('teacher-schedule-search-input')) $('teacher-schedule-search-input').value = '';
+        window.closeTeacherScheduleSearchResults();
+        window.renderTeacherSchedulePublicView();
+    };
+
+    window.submitTeacherScheduleLookup = function(event) {
+        if(event && event.preventDefault) event.preventDefault();
+        const query = $('teacher-schedule-search-input') ? $('teacher-schedule-search-input').value.trim() : '';
+        const matches = window.findTeacherScheduleMatches(query);
+        if(matches.length === 0) return window.showToast('查無符合的教師資料', 'error');
+        const normalizedQuery = query.toLowerCase();
+        const exact = matches.find(teacher => [teacher.name, teacher.empId, teacher.department].some(value => String(value || '').toLowerCase() === normalizedQuery));
+        window.selectTeacherScheduleTeacher((exact || matches[0]).scheduleKey);
+    };
+
+    window.renderTeacherSchedulePublicView = function() {
+        const selectedShell = $('teacher-schedule-selected-shell');
+        const emptyState = $('teacher-schedule-empty-state');
+        const board = $('teacher-schedule-public-board');
+        const teacher = window.getTeacherByScheduleKey(window.currentTeacherScheduleTeacherKey);
+        const isPublicTeacher = teacher && String(teacher.position || '').trim() !== '其他';
+
+        if(!teacher || !isPublicTeacher) {
+            window.currentTeacherScheduleTeacherKey = '';
+            if(selectedShell) {
+                selectedShell.classList.add('hidden');
+                selectedShell.style.display = 'none';
+            }
+            if(emptyState) {
+                emptyState.classList.remove('hidden');
+                emptyState.style.display = 'block';
+            }
+            if(board) board.innerHTML = '';
+            return;
+        }
+
+        const summary = window.getTeacherScheduleSummary(teacher.scheduleKey);
+        if($('teacher-schedule-selected-name')) $('teacher-schedule-selected-name').innerText = (teacher.name || '未命名教師') + ' 的課表';
+        if($('teacher-schedule-selected-meta')) {
+            $('teacher-schedule-selected-meta').innerText = (teacher.department || '未指定系所') + ' ｜ ' + (teacher.position || '未設定職位');
+        }
+        if(board) {
+            board.innerHTML =
+                '<div class="grid gap-4 md:grid-cols-3">' +
+                    '<div class="teacher-schedule-summary-card"><div class="text-[0.74rem] font-black uppercase tracking-[0.2em] text-blue-500">本週排課</div><div class="mt-3 text-3xl font-black text-slate-900">' + summary.totalSessions + '</div><p class="mt-2 text-sm font-medium text-slate-500">以節次為單位計算。</p></div>' +
+                    '<div class="teacher-schedule-summary-card"><div class="text-[0.74rem] font-black uppercase tracking-[0.2em] text-blue-500">授課日數</div><div class="mt-3 text-3xl font-black text-slate-900">' + summary.totalDays + '</div><p class="mt-2 text-sm font-medium text-slate-500">本週實際上課的天數。</p></div>' +
+                    '<div class="teacher-schedule-summary-card"><div class="text-[0.74rem] font-black uppercase tracking-[0.2em] text-blue-500">授課地點</div><div class="mt-3 text-3xl font-black text-slate-900">' + summary.totalLocations + '</div><p class="mt-2 text-sm font-medium text-slate-500">已填入的不同教室或場域。</p></div>' +
+                '</div>' +
+                window.buildTeacherScheduleGridHtml(teacher.scheduleKey, false);
+        }
+        if(selectedShell) {
+            selectedShell.classList.remove('hidden');
+            selectedShell.style.display = 'block';
+        }
+        if(emptyState) {
+            emptyState.classList.add('hidden');
+            emptyState.style.display = 'none';
+        }
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.populateAdminTeacherScheduleSelect = function() {
+        const select = $('schedule-admin-teacher-select');
+        if(!select) return;
+        if((window.teacherList || []).length === 0) {
+            select.innerHTML = '<option value="">目前沒有教師資料</option>';
+            return;
+        }
+        select.innerHTML = (window.teacherList || []).map(teacher => (
+            '<option value="' + window.escapeHtml(teacher.scheduleKey) + '">' + window.escapeHtml((teacher.name || '未命名教師') + '｜' + (teacher.department || '未指定系所')) + '</option>'
+        )).join('');
+        if(!window.currentAdminTeacherScheduleKey && window.teacherList[0]) {
+            window.currentAdminTeacherScheduleKey = window.teacherList[0].scheduleKey;
+        }
+        if(window.currentAdminTeacherScheduleKey) {
+            select.value = window.currentAdminTeacherScheduleKey;
+        }
+    };
+
+    window.renderAdminTeacherScheduleSection = function() {
+        const board = $('teacher-schedule-admin-board');
+        const caption = $('schedule-admin-teacher-caption');
+        window.populateAdminTeacherScheduleSelect();
+        window.renderTeacherScheduleAiState();
+        const teacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
+
+        if(!teacher) {
+            if(caption) caption.innerText = '請先建立教師資料，再開始編輯課表。';
+            if(board) board.innerHTML = '<div class="room-detail-empty">目前沒有可編輯的教師資料</div>';
+            return;
+        }
+
+        if($('schedule-admin-teacher-select')) $('schedule-admin-teacher-select').value = teacher.scheduleKey;
+        if(caption) {
+            caption.innerHTML =
+                '<div class="font-black text-slate-800">' + window.escapeHtml(teacher.name || '未命名教師') + '</div>' +
+                '<div class="mt-2 text-sm font-medium text-slate-500">系所：' + window.escapeHtml(teacher.department || '未指定系所') + '</div>' +
+                '<div class="mt-1 text-sm font-medium text-slate-500">職號：' + window.escapeHtml(teacher.empId || '未設定') + ' ｜ 職位：' + window.escapeHtml(teacher.position || '未設定') + '</div>';
+        }
+        if(board) board.innerHTML = window.buildTeacherScheduleGridHtml(teacher.scheduleKey, true);
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.handleAdminTeacherScheduleSelect = function() {
+        const select = $('schedule-admin-teacher-select');
+        window.currentAdminTeacherScheduleKey = select ? select.value : '';
+        window.renderAdminTeacherScheduleSection();
+    };
+
+    window.openTeacherScheduleEditor = function(cell) {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以編輯課表', 'error');
+        if(!cell || !cell.dataset) return;
+        const scheduleKey = cell.dataset.scheduleKey;
+        const day = Number(cell.dataset.day);
+        const periodId = String(cell.dataset.periodId);
+        const teacher = window.getTeacherByScheduleKey(scheduleKey);
+        const period = (window.periodList || []).find(item => String(item.id) === periodId);
+        const weekday = (window.teacherScheduleWeekdays || []).find(item => Number(item.id) === day);
+        const entry = window.findTeacherScheduleEntry(scheduleKey, day, periodId);
+        if(!teacher || !period || !weekday) return;
+
+        window.teacherScheduleEditContext = {
+            scheduleKey,
+            day,
+            periodId,
+            entryId: entry ? entry.id : ''
+        };
+        if($('teacher-schedule-editor-title')) $('teacher-schedule-editor-title').innerText = (teacher.name || '未命名教師') + '｜' + weekday.fullLabel + ' ' + (period.name || period.id);
+        if($('teacher-schedule-editor-subtitle')) {
+            const timeText = period.start && period.end && !(period.start === '00:00' && period.end === '00:00')
+                ? period.start + ' - ' + period.end
+                : '時間待設定';
+            $('teacher-schedule-editor-subtitle').innerText = (teacher.department || '未指定系所') + ' ｜ ' + timeText;
+        }
+        if($('teacher-schedule-editor-course')) $('teacher-schedule-editor-course').value = entry ? (entry.courseName || '') : '';
+        if($('teacher-schedule-editor-location')) $('teacher-schedule-editor-location').value = entry ? (entry.location || '') : '';
+        if($('teacher-schedule-editor-delete')) {
+            if(entry) show('teacher-schedule-editor-delete');
+            else hide('teacher-schedule-editor-delete');
+        }
+        show('teacher-schedule-editor-modal');
+        setTimeout(() => { if($('teacher-schedule-editor-course')) $('teacher-schedule-editor-course').focus(); }, 60);
+    };
+
+    window.closeTeacherScheduleEditor = function() {
+        window.teacherScheduleEditContext = null;
+        hide('teacher-schedule-editor-modal');
+    };
+
+    window.saveTeacherScheduleEntry = async function() {
+        const context = window.teacherScheduleEditContext;
+        if(!context) return;
+        const courseName = $('teacher-schedule-editor-course') ? $('teacher-schedule-editor-course').value.trim() : '';
+        const location = $('teacher-schedule-editor-location') ? $('teacher-schedule-editor-location').value.trim() : '';
+        if(!courseName) return window.showToast('請輸入課程名稱', 'error');
+
+        const existingIndex = (window.teacherSchedules || []).findIndex(entry => {
+            if(context.entryId) return entry.id === context.entryId;
+            return entry.scheduleKey === context.scheduleKey && Number(entry.day) === Number(context.day) && String(entry.periodId) === String(context.periodId);
+        });
+        const nextEntry = {
+            id: existingIndex >= 0 ? window.teacherSchedules[existingIndex].id : 'ts-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+            scheduleKey: context.scheduleKey,
+            day: Number(context.day),
+            periodId: String(context.periodId),
+            courseName,
+            location
+        };
+
+        if(existingIndex >= 0) window.teacherSchedules[existingIndex] = nextEntry;
+        else window.teacherSchedules.push(nextEntry);
+
+        window.showToast('同步中...', 'success');
+        if(await window.saveSettingsToCloud()) {
+            window.closeTeacherScheduleEditor();
+            window.syncTeacherScheduleViews();
+            window.showToast('課表已更新');
+        } else {
+            window.showToast('課表同步失敗', 'error');
+        }
+    };
+
+    window.deleteTeacherScheduleEntry = async function() {
+        const context = window.teacherScheduleEditContext;
+        if(!context || !context.entryId) return;
+        window.teacherSchedules = (window.teacherSchedules || []).filter(entry => entry.id !== context.entryId);
+        window.showToast('同步中...', 'success');
+        if(await window.saveSettingsToCloud()) {
+            window.closeTeacherScheduleEditor();
+            window.syncTeacherScheduleViews();
+            window.showToast('課表已刪除');
+        } else {
+            window.showToast('刪除失敗', 'error');
+        }
+    };
+
+    window.clearAdminTeacherScheduleEntries = function() {
+        const teacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
+        if(!teacher) return window.showToast('請先選擇教師', 'error');
+        window.openConfirmModal('清空課表', '確定要清空 ' + (teacher.name || '該教師') + ' 的全部課表嗎？', async () => {
+            window.teacherSchedules = (window.teacherSchedules || []).filter(entry => entry.scheduleKey !== teacher.scheduleKey);
+            window.showToast('同步中...', 'success');
+            if(await window.saveSettingsToCloud()) {
+                window.syncTeacherScheduleViews();
+                window.showToast('已清空教師課表');
+            } else {
+                window.showToast('清空失敗', 'error');
+            }
+        });
+    };
+
+    window.syncTeacherScheduleViews = function() {
+        window.ensureTeacherScheduleTeacherDefaults();
+        if(window.currentTeacherScheduleTeacherKey && !window.getTeacherByScheduleKey(window.currentTeacherScheduleTeacherKey)) {
+            window.currentTeacherScheduleTeacherKey = '';
+        }
+        if(window.currentAdminTeacherScheduleKey && !window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey)) {
+            window.currentAdminTeacherScheduleKey = '';
+        }
+        if(!window.currentAdminTeacherScheduleKey && (window.teacherList || [])[0]) {
+            window.currentAdminTeacherScheduleKey = window.teacherList[0].scheduleKey;
+        }
+        window.renderTeacherSchedulePublicView();
+        if($('admin-tab') && $('admin-tab').classList.contains('active') && $('teacher-schedule-section') && !$('teacher-schedule-section').classList.contains('hidden')) {
+            window.renderAdminTeacherScheduleSection();
+        }
+    };
+
+    window.ensureTeacherScheduleTeacherDefaults();
 
     window.extractRoomName = function(eq) {
         if(!eq) return ''; let n = eq;
@@ -1617,6 +3872,7 @@ body::before {
     window.switchTab = function(id) {
         $$('.tab-content').forEach(el=>{ el.classList.remove('active'); el.style.display='none'; }); if($(id)) { $(id).classList.add('active'); $(id).style.display='block'; }
         ['borrow-tab','report-tab','query-tab'].forEach(tid=>{ const btn=$(`btn-${tid}`); if(btn) { btn.className=(tid===id)?"t-btn t-act":"t-btn"; }});
+        if($('floating-teacher-schedule-btn')) $('floating-teacher-schedule-btn').classList.toggle('active', id === 'teacher-schedule-tab');
         if(id!=='admin-tab' && window.currentAdminRole!=='none') window.currentAdminRole='none';
         
         if(id==='report-tab') { 
@@ -1625,13 +3881,15 @@ body::before {
             window.stopAutoRefresh();
         }
         
-        if(id==='borrow-tab'||id==='query-tab') window.loadSettingsFromCloud();
+        if(id==='borrow-tab'||id==='query-tab'||id==='teacher-schedule-tab') window.loadSettingsFromCloud();
+        if(id==='teacher-schedule-tab') window.renderTeacherSchedulePublicView();
         if(id==='admin-tab') { 
             window.applyAdminRoleUI(); 
             window.renderAdminReview(); 
             window.renderAdminEquipStatus(); 
             window.renderAdminEquipment(); 
             window.renderAdminTeachers(); 
+            window.renderAdminTeacherScheduleSection();
             window.renderAdminClasses(); 
             window.renderAdminKeys(); 
             window.renderAdminPeriods(); 
@@ -1644,13 +3902,14 @@ body::before {
         $$('.borrow-section-content').forEach(el=>{ el.classList.add('hidden'); el.style.display='none'; }); if($(id)) { $(id).classList.remove('hidden'); $(id).style.display='block'; }
         const btns = {'btn-borrow-key':'key-borrow-section', 'btn-borrow-equip':'equip-borrow-section', 'btn-borrow-classroom':'classroom-borrow-section', 'btn-borrow-exhibition':'exhibition-borrow-section'};
         Object.keys(btns).forEach(b=>{ if($(b)) $(b).className=(btns[b]===id)?"s-btn s-act":"s-btn"; });
+        if(id === 'key-borrow-section') window.applyBorrowDefaultDates();
         if(id==='exhibition-borrow-section') window.renderExhibitionSchedule();
     };
 
     window.switchAdminSection = function(sId) {
         $$('.admin-section-content').forEach(el=>{ el.classList.add('hidden'); el.style.display='none'; }); if($(sId)) { $(sId).classList.remove('hidden'); $(sId).style.display='block'; }
         ['dashboard', 'review', 'equip-status', 'equip', 'abnormal'].forEach(b=>{ if($(`btn-admin-${b}`)) $(`btn-admin-${b}`).className=(sId===`${b}-section`)?"a-btn a-act":"a-btn"; });
-        const gBtn=$('btn-admin-settings-group'); if(gBtn) gBtn.className=['teacher-section','class-section','key-section','period-section'].includes(sId)?"a-btn a-act flex-r gap-1":"a-btn flex-r gap-1";
+        const gBtn=$('btn-admin-settings-group'); if(gBtn) gBtn.className=['teacher-section','teacher-schedule-section','class-section','key-section','period-section'].includes(sId)?"a-btn a-act flex-r gap-1":"a-btn flex-r gap-1";
         
         if(['dashboard-section', 'review-section', 'equip-status-section', 'abnormal-section'].includes(sId)) {
             window.startAutoRefresh(); 
@@ -1660,6 +3919,7 @@ body::before {
         
         if(sId==='equip-section') window.renderAdminEquipment(); 
         if(sId==='teacher-section') window.renderAdminTeachers(); 
+        if(sId==='teacher-schedule-section') window.renderAdminTeacherScheduleSection();
         if(sId==='class-section') window.renderAdminClasses(); 
         if(sId==='key-section') window.renderAdminKeys(); 
         if(sId==='period-section') window.renderAdminPeriods();
@@ -1678,6 +3938,10 @@ body::before {
     window.toggleSettingsDropdown = function(e){ e.stopPropagation(); if($('admin-settings-menu')) { $('admin-settings-menu').classList.toggle('hidden'); } };
     window.closeSettingsDropdown = function(){ if($('admin-settings-menu')) $('admin-settings-menu').classList.add('hidden'); };
     document.addEventListener('click', window.closeSettingsDropdown);
+    document.addEventListener('click', function(event) {
+        const searchShell = event.target && event.target.closest ? event.target.closest('.teacher-schedule-search-shell') : null;
+        if(!searchShell) window.closeTeacherScheduleSearchResults();
+    });
 
     window.forceRefreshAll = async function(e) {
         if (e && e.preventDefault) e.preventDefault();
@@ -1827,13 +4091,73 @@ body::before {
     };
     
     window.saveSettingsToCloud = async function() {
-        const u=$('gas-url')?$('gas-url').value.trim():''; if(!u.startsWith('http')){ localStorage.setItem('customEquipmentList',JSON.stringify(window.equipmentList)); localStorage.setItem('teacherList',JSON.stringify(window.teacherList)); localStorage.setItem('customKeyList',JSON.stringify(window.keyList)); localStorage.setItem('customClassList',JSON.stringify(window.classList)); localStorage.setItem('periodList',JSON.stringify(window.periodList)); localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules)); localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement); return true; }
-        try { const payload=[...window.equipmentList]; payload.push({category:'__SYSTEM_SETTINGS__',name:'PERIODS',propertyNo:JSON.stringify(window.periodList),location:'SYSTEM'}); payload.push({category:'__SYSTEM_SETTINGS__',name:'ROOM_SCHEDULES',propertyNo:JSON.stringify(window.roomSchedules),location:'SYSTEM'}); payload.push({category:'__SYSTEM_SETTINGS__',name:'EXHIBITION_ANNOUNCEMENT',propertyNo:window.exhibitionAnnouncement,location:'SYSTEM'}); const res=await fetch(u, {method:'POST',body:JSON.stringify({action:'saveSettings',equipment:JSON.stringify(payload),teachers:JSON.stringify(window.teacherList),keys:JSON.stringify(window.keyList),classes:JSON.stringify(window.classList)}),headers:{'Content-Type':'text/plain;charset=utf-8'}}); return (await res.json()).status==='success'; } catch(err){ return false; }
+        window.ensureTeacherScheduleTeacherDefaults();
+        const u=$('gas-url')?$('gas-url').value.trim():'';
+        if(!u.startsWith('http')){
+            localStorage.setItem('customEquipmentList',JSON.stringify(window.equipmentList));
+            localStorage.setItem('teacherList',JSON.stringify(window.teacherList));
+            localStorage.setItem('customKeyList',JSON.stringify(window.keyList));
+            localStorage.setItem('customClassList',JSON.stringify(window.classList));
+            localStorage.setItem('periodList',JSON.stringify(window.periodList));
+            localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));
+            localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
+            localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement);
+            return true;
+        }
+        try {
+            const payload=[...window.equipmentList];
+            payload.push({category:'__SYSTEM_SETTINGS__',name:'PERIODS',propertyNo:JSON.stringify(window.periodList),location:'SYSTEM'});
+            payload.push({category:'__SYSTEM_SETTINGS__',name:'ROOM_SCHEDULES',propertyNo:JSON.stringify(window.roomSchedules),location:'SYSTEM'});
+            payload.push({category:'__SYSTEM_SETTINGS__',name:'TEACHER_SCHEDULES',propertyNo:JSON.stringify(window.teacherSchedules),location:'SYSTEM'});
+            payload.push({category:'__SYSTEM_SETTINGS__',name:'EXHIBITION_ANNOUNCEMENT',propertyNo:window.exhibitionAnnouncement,location:'SYSTEM'});
+            const res=await fetch(u, {method:'POST',body:JSON.stringify({action:'saveSettings',equipment:JSON.stringify(payload),teachers:JSON.stringify(window.teacherList),keys:JSON.stringify(window.keyList),classes:JSON.stringify(window.classList)}),headers:{'Content-Type':'text/plain;charset=utf-8'}});
+            return (await res.json()).status==='success';
+        } catch(err){ return false; }
     };
     
     window.loadSettingsFromCloud = async function() {
         const u=$('gas-url')?$('gas-url').value.trim():'';
-        if(u.startsWith('http')) { try { const res=await fetch(u + '?action=getSettings&t=' + Date.now()); const r=await res.json(); if(r.data){ if(r.data.equipment){ const eqRaw=typeof r.data.equipment==='string'?JSON.parse(r.data.equipment):r.data.equipment; const pS=eqRaw.find(e=>e.name==='PERIODS'); if(pS){try{window.periodList=typeof pS.propertyNo==='string'?JSON.parse(pS.propertyNo):pS.propertyNo;}catch(e){}} const sS=eqRaw.find(e=>e.name==='ROOM_SCHEDULES'); if(sS){try{window.roomSchedules=typeof sS.propertyNo==='string'?JSON.parse(sS.propertyNo):sS.propertyNo;localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));}catch(e){}} const annS=eqRaw.find(e=>e.name==='EXHIBITION_ANNOUNCEMENT'); if(annS){window.exhibitionAnnouncement=annS.propertyNo||'';} window.equipmentList=eqRaw.filter(e=>e.category!=='__SYSTEM_SETTINGS__'); } if(r.data.teachers) window.teacherList=typeof r.data.teachers==='string'?JSON.parse(r.data.teachers):r.data.teachers; if(r.data.classes) window.classList=typeof r.data.classes==='string'?JSON.parse(r.data.classes):r.data.classes; if(r.data.keys){ window.keyList=typeof r.data.keys==='string'?JSON.parse(r.data.keys):r.data.keys; window.keyList = [...new Set(window.keyList.map(k => k === 'Y103走廊【櫥窗】' ? 'Y棟一樓走廊【櫥窗】' : k))]; if(!window.keyList.includes('Y棟一樓走廊【櫥窗】')) window.keyList.push('Y棟一樓走廊【櫥窗】'); } } } catch(e){ console.error("Cloud Fetch Error:", e); } } else { const p=localStorage.getItem('periodList'); if(p) window.periodList=JSON.parse(p); window.exhibitionAnnouncement=localStorage.getItem('exhibitionAnnouncement')||''; const t=localStorage.getItem('teacherList'); if(t){ let pt=JSON.parse(t); if(pt.length>0) window.teacherList=pt; } const eq=localStorage.getItem('customEquipmentList'); if(eq){ let pe=JSON.parse(eq); if(pe.length>0) window.equipmentList=pe; } const cl=localStorage.getItem('customClassList'); if(cl){ let pc=JSON.parse(cl); if(pc.length>0) window.classList=pc; } const kl=localStorage.getItem('customKeyList'); if(kl){ let pk=JSON.parse(kl); if(pk.length>0) window.keyList=pk; } }
+        if(u.startsWith('http')) {
+            try {
+                const res=await fetch(u + '?action=getSettings&t=' + Date.now());
+                const r=await res.json();
+                if(r.data){
+                    if(r.data.equipment){
+                        const eqRaw=typeof r.data.equipment==='string'?JSON.parse(r.data.equipment):r.data.equipment;
+                        const pS=eqRaw.find(e=>e.name==='PERIODS');
+                        if(pS){try{window.periodList=typeof pS.propertyNo==='string'?JSON.parse(pS.propertyNo):pS.propertyNo;}catch(e){}}
+                        const sS=eqRaw.find(e=>e.name==='ROOM_SCHEDULES');
+                        if(sS){try{window.roomSchedules=typeof sS.propertyNo==='string'?JSON.parse(sS.propertyNo):sS.propertyNo;localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));}catch(e){}}
+                        const tsS=eqRaw.find(e=>e.name==='TEACHER_SCHEDULES');
+                        if(tsS){try{window.teacherSchedules=typeof tsS.propertyNo==='string'?JSON.parse(tsS.propertyNo):tsS.propertyNo;localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));}catch(e){}}
+                        const annS=eqRaw.find(e=>e.name==='EXHIBITION_ANNOUNCEMENT');
+                        if(annS){window.exhibitionAnnouncement=annS.propertyNo||'';}
+                        window.equipmentList=eqRaw.filter(e=>e.category!=='__SYSTEM_SETTINGS__');
+                    }
+                    if(r.data.teachers) window.teacherList=typeof r.data.teachers==='string'?JSON.parse(r.data.teachers):r.data.teachers;
+                    if(r.data.classes) window.classList=typeof r.data.classes==='string'?JSON.parse(r.data.classes):r.data.classes;
+                    if(r.data.keys){
+                        window.keyList=typeof r.data.keys==='string'?JSON.parse(r.data.keys):r.data.keys;
+                        window.keyList = [...new Set(window.keyList.map(k => k === 'Y103走廊【櫥窗】' ? 'Y棟一樓走廊【櫥窗】' : k))];
+                        if(!window.keyList.includes('Y棟一樓走廊【櫥窗】')) window.keyList.push('Y棟一樓走廊【櫥窗】');
+                    }
+                }
+            } catch(e){ console.error("Cloud Fetch Error:", e); }
+        } else {
+            const p=localStorage.getItem('periodList');
+            if(p) window.periodList=JSON.parse(p);
+            const teacherScheduleLocal = localStorage.getItem('teacherSchedules');
+            if(teacherScheduleLocal) window.teacherSchedules=JSON.parse(teacherScheduleLocal);
+            window.exhibitionAnnouncement=localStorage.getItem('exhibitionAnnouncement')||'';
+            const t=localStorage.getItem('teacherList');
+            if(t){ let pt=JSON.parse(t); if(pt.length>0) window.teacherList=pt; }
+            const eq=localStorage.getItem('customEquipmentList');
+            if(eq){ let pe=JSON.parse(eq); if(pe.length>0) window.equipmentList=pe; }
+            const cl=localStorage.getItem('customClassList');
+            if(cl){ let pc=JSON.parse(cl); if(pc.length>0) window.classList=pc; }
+            const kl=localStorage.getItem('customKeyList');
+            if(kl){ let pk=JSON.parse(kl); if(pk.length>0) window.keyList=pk; }
+        }
         
         if(window.keyList) { window.keyList = [...new Set(window.keyList.map(k => k === 'Y103走廊【櫥窗】' ? 'Y棟一樓走廊【櫥窗】' : k))]; }
         if ((window.teacherList||[]).length === 0) { window.teacherList = [{ empId: 'tf0173', name: '黃建芳', phone: '0928525591', email: 'tf0173@gm.tut.edu.tw', position: '專任', identity: '主任' }, { empId: 't40124', name: '徐碧娟', phone: '0936491480', email: 't40124@gm.tut.edu.tw', position: '兼任', identity: '一般教師' }, { empId: 't40147', name: '俞家燕', phone: '0970053936', email: 't40147@gm.tut.edu.tw', position: '專任', identity: '一般教師' }, { empId: 't40122', name: '陸承石', phone: '0912553056', email: 't40122@gm.tut.edu.tw', position: '專任', identity: '副主任' }, { empId: 's00397', name: '鄭富耀', phone: '0902308837', email: 's00397@gm.tut.edu.tw', position: '其他', identity: '系辦助理' }, { empId: 's00401', name: '吳羽婕', phone: '0902138659', email: 's00401@gm.tut.edu.tw', position: '其他', identity: '系辦助理' }, { empId: 'd12040155', name: '黃振皓', phone: '0928471596', email: 'd12040155@gm.tut.edu.tw', position: '其他', identity: '維修員' }]; }
@@ -1841,8 +4165,10 @@ body::before {
         if ((window.keyList||[]).length === 0) { window.keyList = ['D001 普通教室', 'D002', 'D201', 'Y103', 'Y103-1 展覽空間', 'Y棟一樓走廊【櫥窗】']; }
         if ((window.classList||[]).length === 0) { window.classList = ['四漫一A', '四漫一B', '漫畫系']; }
         
+        window.ensureTeacherScheduleTeacherDefaults();
         window.initEquipmentSelect(); window.initTeacherDatalist(); window.initKeySelect(); window.initClassSelect(); window.initPeriodSelect(); window.initExhibitionSelect(); window.renderAnnouncement();
-        if($('admin-tab').classList.contains('active') && window.currentAdminRole!=='exhibition'){ window.renderAdminEquipment(); window.renderAdminTeachers(); window.renderAdminClasses(); window.renderAdminKeys(); window.renderAdminPeriods(); }
+        window.syncTeacherScheduleViews();
+        if($('admin-tab').classList.contains('active') && window.currentAdminRole!=='exhibition'){ window.renderAdminEquipment(); window.renderAdminTeachers(); window.renderAdminTeacherScheduleSection(); window.renderAdminClasses(); window.renderAdminKeys(); window.renderAdminPeriods(); }
     };
 
     window.setReportFilter = function(f) {
@@ -2069,20 +4395,25 @@ body::before {
     };
 
     window.saveTeacher = async function() { 
-        const n=$('new-teacher-name').value.trim(), id=$('new-teacher-id').value.trim(), p=$('new-teacher-position').value, idn=$('new-teacher-identity').value, ph=$('new-teacher-phone').value.trim(), em=$('new-teacher-email')?.value.trim()||''; 
+        const n=$('new-teacher-name').value.trim(), id=$('new-teacher-id').value.trim(), dept=$('new-teacher-department').value.trim(), p=$('new-teacher-position').value, idn=$('new-teacher-identity').value, ph=$('new-teacher-phone').value.trim(), em=$('new-teacher-email')?.value.trim()||''; 
         if(!n) return window.showToast('填寫姓名','error'); 
         const ei=parseInt($('edit-teacher-index').value); 
-        const d={name:n,empId:id,position:p,identity:idn,phone:ph,email:em}; 
+        const existingTeacher = ei >= 0 ? (window.teacherList[ei] || {}) : {};
+        const d={...existingTeacher,name:n,empId:id,department:dept||existingTeacher.department||'漫畫系',position:p,identity:idn,phone:ph,email:em,scheduleKey:existingTeacher.scheduleKey||window.makeTeacherScheduleKey({empId:id,name:n}, window.teacherList.length)}; 
         if(ei>=0) window.teacherList[ei]=d; 
         else window.teacherList.push(d); 
         window.showToast('同步中...','success'); 
-        if(await window.saveSettingsToCloud()){window.renderAdminTeachers();window.initTeacherDatalist();window.cancelEditTeacher();window.showToast('成功');}else window.showToast('失敗','error'); 
+        if(await window.saveSettingsToCloud()){window.renderAdminTeachers();window.initTeacherDatalist();window.cancelEditTeacher();window.syncTeacherScheduleViews();window.showToast('成功');}else window.showToast('失敗','error'); 
     };
 
     window.deleteTeacher = async function(i) { 
+        const teacher = window.teacherList[i];
+        if(teacher && teacher.scheduleKey) {
+            window.teacherSchedules = (window.teacherSchedules || []).filter(entry => entry.scheduleKey !== teacher.scheduleKey);
+        }
         window.teacherList.splice(i,1); 
         window.showToast('同步中...','success'); 
-        if(await window.saveSettingsToCloud()){window.renderAdminTeachers();window.initTeacherDatalist();window.showToast('成功');}else window.showToast('失敗','error'); 
+        if(await window.saveSettingsToCloud()){window.renderAdminTeachers();window.initTeacherDatalist();window.syncTeacherScheduleViews();window.showToast('成功');}else window.showToast('失敗','error'); 
     };
 
     window.saveClass = async function() { 
@@ -2137,7 +4468,7 @@ body::before {
             else if (t.identity === '維修員') iden = '<span class="text-red-600 font-bold flex-r gap-1.5 text-[15px] whitespace-nowrap"><i data-lucide="wrench" class="w-4 h-4"></i> 維修員</span>';
             else iden = '<span class="text-gray-600 font-bold text-[15px] whitespace-nowrap">' + t.identity + '</span>';
             
-            tb.innerHTML += '<tr class="td hover:bg-gray-50 transition-colors"><td class="p-4 font-mono text-gray-500">' + (t.empId||'-') + '</td><td class="p-4 font-bold text-gray-800 text-base">' + t.name + '</td><td class="p-4 whitespace-nowrap">' + pB + '</td><td class="p-4">' + iden + '</td><td class="p-4 font-mono text-gray-600">' + (t.phone||'-') + '</td><td class="p-4 text-gray-600">' + (t.email||'-') + '</td><td class="p-4 text-right whitespace-nowrap"><button onclick="window.editTeacherSetup(' + i + ')" class="btn btn-i py-1.5 px-3 text-xs inline-flex mr-2">編輯</button><button onclick="window.openConfirmModal(\'刪除\',\'確定？\',()=>window.deleteTeacher(' + i + '))" class="btn btn-r py-1.5 px-3 text-xs inline-flex">刪除</button></td></tr>'; 
+            tb.innerHTML += '<tr class="td hover:bg-gray-50 transition-colors"><td class="p-4 font-mono text-gray-500">' + (t.empId||'-') + '</td><td class="p-4 font-bold text-gray-800 text-base">' + t.name + '</td><td class="p-4 text-gray-600 font-medium">' + (t.department||'漫畫系') + '</td><td class="p-4 whitespace-nowrap">' + pB + '</td><td class="p-4">' + iden + '</td><td class="p-4 font-mono text-gray-600">' + (t.phone||'-') + '</td><td class="p-4 text-gray-600">' + (t.email||'-') + '</td><td class="p-4 text-right whitespace-nowrap"><button onclick="window.editTeacherSetup(' + i + ')" class="btn btn-i py-1.5 px-3 text-xs inline-flex mr-2">編輯</button><button onclick="window.openConfirmModal(\'刪除\',\'確定？\',()=>window.deleteTeacher(' + i + '))" class="btn btn-r py-1.5 px-3 text-xs inline-flex">刪除</button></td></tr>'; 
         }); 
         if(window.lucide) window.lucide.createIcons();
     };
@@ -2179,8 +4510,8 @@ body::before {
 
     window.resolveAbnormal = function(id) { window.openConfirmModal('處理','確定修復了嗎？',()=>{ const i=(window.windowData||window.mockDatabase||[]).find(r=>String(r.id||r.ID)===String(id)); if(i) window.executeReturn(id, window.getStatus(i).replace(/\(異常: .*?\)/,'(異常已處理)')); }); };
 
-    window.editTeacherSetup = function(i) { const t=window.teacherList[i]; $('new-teacher-name').value=t.name; $('new-teacher-id').value=t.empId||''; $('new-teacher-position').value=t.position||'專任'; $('new-teacher-identity').value=t.identity||'一般教師'; $('new-teacher-phone').value=t.phone||''; $('new-teacher-email').value=t.email||''; $('edit-teacher-index').value=i; show('btn-cancel-teacher'); };
-    window.cancelEditTeacher = function() { $('new-teacher-name').value=''; $('new-teacher-id').value=''; $('new-teacher-position').value='專任'; $('new-teacher-identity').value='一般教師'; $('new-teacher-phone').value=''; $('new-teacher-email').value=''; $('edit-teacher-index').value='-1'; hide('btn-cancel-teacher'); };
+    window.editTeacherSetup = function(i) { const t=window.teacherList[i]; $('new-teacher-name').value=t.name; $('new-teacher-id').value=t.empId||''; $('new-teacher-department').value=t.department||'漫畫系'; $('new-teacher-position').value=t.position||'專任'; $('new-teacher-identity').value=t.identity||'一般教師'; $('new-teacher-phone').value=t.phone||''; $('new-teacher-email').value=t.email||''; $('edit-teacher-index').value=i; show('btn-cancel-teacher'); };
+    window.cancelEditTeacher = function() { $('new-teacher-name').value=''; $('new-teacher-id').value=''; $('new-teacher-department').value=''; $('new-teacher-position').value='專任'; $('new-teacher-identity').value='一般教師'; $('new-teacher-phone').value=''; $('new-teacher-email').value=''; $('edit-teacher-index').value='-1'; hide('btn-cancel-teacher'); };
     window.editClassSetup = function(i) { $('new-class-name').value=window.classList[i]; $('edit-class-index').value=i; show('btn-cancel-class'); };
     window.cancelEditClass = function() { $('new-class-name').value=''; $('edit-class-index').value='-1'; hide('btn-cancel-class'); };
     window.editKeySetup = function(i) { $('new-key-name').value=window.keyList[i]; $('edit-key-index').value=i; show('btn-cancel-key'); };
@@ -2430,7 +4761,7 @@ body::before {
 
     window.openTeacherSelfEditModal = function() { $('self-teacher-name').value='';$('self-teacher-emp-id').value='';$('self-teacher-position').value='專任';$('self-teacher-phone').value='';$('self-teacher-email').value=''; show('teacher-self-edit-modal'); };
     window.autofillSelfData = function() { const n=$('self-teacher-name').value.trim(), id=$('self-teacher-emp-id').value.trim(); if(n&&id){ const t=(window.teacherList||[]).find(x=>x.name===n&&x.empId===id); if(t){ if(!$('self-teacher-phone').value)$('self-teacher-phone').value=t.phone||''; if(!$('self-teacher-email').value)$('self-teacher-email').value=t.email||''; $('self-teacher-position').value=t.position||'專任'; } } };
-    window.saveTeacherSelf = async function() { const n=$('self-teacher-name').value.trim(), i=$('self-teacher-emp-id').value.trim(), ph=$('self-teacher-phone').value.trim(), em=$('self-teacher-email').value.trim(), pos=$('self-teacher-position').value; if(!n||!i||!ph||!em) return window.showToast('填寫完整','error'); let eIdx=(window.teacherList||[]).findIndex(t=>t.name===n&&t.empId===i); if(eIdx>=0){window.teacherList[eIdx].phone=ph;window.teacherList[eIdx].email=em;window.teacherList[eIdx].position=pos;}else{(window.teacherList=window.teacherList||[]).push({name:n,empId:i,position:pos,identity:'一般教師',phone:ph,email:em});} window.showToast('同步中...','success'); if(await window.saveSettingsToCloud()){window.initTeacherDatalist();if($('admin-tab').classList.contains('active'))window.renderAdminTeachers();hide('teacher-self-edit-modal');window.showToast('成功');}else window.showToast('異常','error'); };
+    window.saveTeacherSelf = async function() { const n=$('self-teacher-name').value.trim(), i=$('self-teacher-emp-id').value.trim(), ph=$('self-teacher-phone').value.trim(), em=$('self-teacher-email').value.trim(), pos=$('self-teacher-position').value; if(!n||!i||!ph||!em) return window.showToast('填寫完整','error'); let eIdx=(window.teacherList||[]).findIndex(t=>t.name===n&&t.empId===i); if(eIdx>=0){window.teacherList[eIdx].phone=ph;window.teacherList[eIdx].email=em;window.teacherList[eIdx].position=pos;}else{(window.teacherList=window.teacherList||[]).push({name:n,empId:i,department:'漫畫系',position:pos,identity:'一般教師',phone:ph,email:em,scheduleKey:window.makeTeacherScheduleKey({empId:i,name:n}, window.teacherList.length)});} window.showToast('同步中...','success'); if(await window.saveSettingsToCloud()){window.initTeacherDatalist();window.syncTeacherScheduleViews();if($('admin-tab').classList.contains('active'))window.renderAdminTeachers();hide('teacher-self-edit-modal');window.showToast('成功');}else window.showToast('異常','error'); };
 
     window.submitBorrow = async function(e, type) {
         e.preventDefault(); const btn=e.target.querySelector('button[type="submit"]'); if(btn) btn.disabled=true;
@@ -2448,8 +4779,8 @@ body::before {
             let exDtN=null; if(type==='exhibition') exDtN=$('reserve-end-exhibition'); else if(type==='classroom') exDtN=$('reserve-date-classroom'); else exDtN=$(`expectedReturnDate-${type}`);
             const payload={ action:'borrow', borrower:bor, 借用人:bor, equipment:eq, 設備名稱:eq, quantity:qty, 數量:qty, expectedReturnDate:exDtN&&exDtN.value?exDtN.value:'', 預計歸還日期:exDtN&&exDtN.value?exDtN.value:'', status:type==='key'?'借用中':'待審核', 狀態:type==='key'?'借用中':'待審核', time:new Date().toLocaleString('zh-TW',{hour12:false}), 借用時間:new Date().toLocaleString('zh-TW',{hour12:false}) };
             const gasUrl=$('gas-url')?$('gas-url').value.trim():'';
-            if(!gasUrl.startsWith('http')){ (window.mockDatabase=window.mockDatabase||[]).unshift({...payload, ID:Date.now().toString()}); window.showToast('模擬成功'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.switchTab('report-tab'); if(btn)btn.disabled=false; return; }
-            fetch(gasUrl, {method:'POST', body:JSON.stringify(payload), headers:{'Content-Type':'text/plain;charset=utf-8'}}).then(()=>{ window.showToast('申請已送出'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).catch(err=>{ window.showToast('發送成功，跳轉中','success'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).finally(()=>{if(btn)btn.disabled=false;});
+            if(!gasUrl.startsWith('http')){ (window.mockDatabase=window.mockDatabase||[]).unshift({...payload, ID:Date.now().toString()}); window.showToast('模擬成功'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); window.switchTab('report-tab'); if(btn)btn.disabled=false; return; }
+            fetch(gasUrl, {method:'POST', body:JSON.stringify(payload), headers:{'Content-Type':'text/plain;charset=utf-8'}}).then(()=>{ window.showToast('申請已送出'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).catch(err=>{ window.showToast('發送成功，跳轉中','success'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).finally(()=>{if(btn)btn.disabled=false;});
         } catch(err) { window.showToast('錯誤', 'error'); if(btn)btn.disabled=false; }
     };
 
@@ -2457,6 +4788,7 @@ body::before {
         const t = window.getLocalDateString(); window.lastKnownDateStr = t; 
         if($('report-start-date')) $('report-start-date').value = t; 
         if($('report-end-date')) $('report-end-date').value = t;
+        window.applyBorrowDefaultDates(true);
         window.loadSettingsFromCloud().then(() => { window.fetchData(); });
         window.updateDateTimeDisplay(); setInterval(window.updateDateTimeDisplay, 1000);
         window.startAutoRefresh(); 
