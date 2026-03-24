@@ -302,9 +302,54 @@ body {
     min-height: 3.5rem;
 }
 .hidden { display: none !important; }
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 130;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(244, 247, 251, 0.72);
+    backdrop-filter: blur(12px);
+}
+.loading-overlay-panel {
+    width: min(100%, 22rem);
+    padding: 1.8rem 1.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    border-radius: 1.9rem;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
+    text-align: center;
+}
+.loading-spinner {
+    width: 3.1rem;
+    height: 3.1rem;
+    margin: 0 auto;
+    border-radius: 9999px;
+    border: 4px solid rgba(0, 113, 227, 0.14);
+    border-top-color: var(--blue-accent);
+    border-right-color: rgba(0, 113, 227, 0.42);
+    animation: loadingSpin 0.78s linear infinite;
+}
+.loading-overlay-title {
+    margin-top: 1rem;
+    font-size: 1.05rem;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+}
+.loading-overlay-message {
+    margin-top: 0.55rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    line-height: 1.7;
+    color: #64748b;
+}
 .tab-content { display: none; }
 .tab-content.active { display: block; animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes loadingSpin { to { transform: rotate(360deg); } }
 @keyframes floatGlow {
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
     50% { transform: translate3d(0, -10px, 0) scale(1.04); }
@@ -353,6 +398,149 @@ body::before {
 .page-shell {
     position: relative;
     overflow-x: clip;
+}
+body.approval-route-mode {
+    background: linear-gradient(180deg, #f6f9ff 0%, #ffffff 24%, #f8fbff 100%);
+}
+body.approval-route-mode::before {
+    opacity: 0.08;
+    mask-image: radial-gradient(circle at top center, rgba(0,0,0,0.5), transparent 72%);
+}
+body.approval-route-mode .page-shell,
+body.approval-route-mode #floating-teacher-schedule-btn {
+    display: none !important;
+}
+body.approval-route-mode .mod-w:not(#teacher-classroom-approval-modal) {
+    display: none !important;
+}
+body.approval-route-mode #teacher-classroom-approval-modal {
+    align-items: stretch;
+    justify-content: stretch;
+    background: transparent;
+    backdrop-filter: none;
+    overflow-y: auto;
+}
+body.approval-route-mode #teacher-classroom-approval-modal > div {
+    width: 100%;
+    max-width: none;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 1.25rem 1rem calc(7rem + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, #f6f9ff 0%, #ffffff 20%, #f8fbff 100%);
+}
+body.approval-route-mode #teacher-classroom-approval-close {
+    display: none !important;
+}
+.teacher-approval-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(191, 219, 254, 0.95);
+    background: rgba(255,255,255,0.92);
+    color: #2563eb;
+    font-size: 0.76rem;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+.teacher-approval-notice {
+    border-radius: 1.45rem;
+    border: 1px solid rgba(191, 219, 254, 0.9);
+    background: linear-gradient(180deg, rgba(239,246,255,0.96), rgba(248,250,252,0.92));
+    padding: 1rem 1.05rem;
+    color: #0369a1;
+    font-size: 0.96rem;
+    font-weight: 800;
+    line-height: 1.7;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.teacher-approval-grid {
+    display: grid;
+    gap: 0.95rem;
+}
+.teacher-approval-field {
+    border-radius: 1.6rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(255,255,255,0.92);
+    padding: 1.15rem 1.1rem;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+}
+.teacher-approval-label {
+    font-size: 0.78rem;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+.teacher-approval-value {
+    margin-top: 0.7rem;
+    font-size: 1.05rem;
+    line-height: 1.45;
+    font-weight: 900;
+    color: #0f172a;
+}
+.teacher-approval-subvalue {
+    margin-top: 0.3rem;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    font-weight: 700;
+    color: #64748b;
+}
+.teacher-approval-input-shell {
+    border-radius: 1.6rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    background: rgba(255,255,255,0.96);
+    padding: 1.15rem 1.1rem;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+}
+.teacher-approval-helper {
+    margin-top: 0.7rem;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.teacher-approval-actions {
+    margin-top: 1.25rem;
+}
+.teacher-approval-actions-inner {
+    display: grid;
+    gap: 0.75rem;
+}
+.teacher-approval-button {
+    min-height: 3.4rem;
+    border-radius: 1.25rem;
+    font-size: 0.98rem;
+    font-weight: 900;
+}
+.teacher-approval-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+.teacher-approval-status-pill.pending {
+    background: #eff6ff;
+    color: #2563eb;
+}
+.teacher-approval-status-pill.approved {
+    background: #ecfdf3;
+    color: #15803d;
+}
+.teacher-approval-status-pill.rejected {
+    background: #fef2f2;
+    color: #dc2626;
+}
+.teacher-approval-status-pill.other {
+    background: #f8fafc;
+    color: #475569;
 }
 .page-shell::before,
 .page-shell::after {
@@ -1140,6 +1328,12 @@ body::before {
 }
 @media (min-width: 768px) {
     .section-intro { padding: 2rem; }
+    .teacher-approval-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .teacher-approval-actions-inner {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 @media (max-width: 1100px) {
     .hero-panel {
@@ -1230,6 +1424,42 @@ body::before {
     .utility-action {
         width: 100%;
     }
+    body.approval-route-mode #teacher-classroom-approval-modal > div {
+        padding: 1rem 1rem calc(7.6rem + env(safe-area-inset-bottom, 0px));
+    }
+    body.approval-route-mode #teacher-classroom-approval-close {
+        display: none !important;
+    }
+    body.approval-route-mode .teacher-approval-actions {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 4;
+        margin-top: 0;
+        padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+        background: linear-gradient(180deg, rgba(246,249,255,0), rgba(255,255,255,0.88) 18%, #ffffff 42%);
+        backdrop-filter: blur(14px);
+    }
+    body.approval-route-mode .teacher-approval-actions-inner {
+        max-width: 42rem;
+        margin: 0 auto;
+    }
+    .teacher-approval-grid {
+        gap: 0.85rem;
+    }
+    .teacher-approval-field,
+    .teacher-approval-input-shell {
+        padding: 1rem;
+        border-radius: 1.45rem;
+    }
+    .teacher-approval-value {
+        font-size: 0.96rem;
+        line-height: 1.5;
+    }
+    .teacher-approval-subvalue {
+        font-size: 0.88rem;
+    }
 }
 @media (prefers-reduced-motion: reduce) {
     *,
@@ -1252,6 +1482,13 @@ body::before {
 </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800 antialiased">
+<script>
+try {
+    if (new URL(window.location.href).searchParams.get('classroomApproval')) {
+        document.body.classList.add('approval-route-mode');
+    }
+} catch (err) {}
+</script>
 
 <button id="floating-teacher-schedule-btn" type="button" class="floating-side-btn" onclick="window.switchTab('teacher-schedule-tab')">教師課表查詢</button>
 
@@ -1785,7 +2022,7 @@ body::before {
                     <h3 class="text-[1.45rem] font-black text-slate-900 md:text-[1.75rem]">教室借用確認</h3>
                     <p class="mt-2 text-sm font-medium leading-7 text-slate-500">請確認學生申請內容後，再回覆是否同意借用教室。</p>
                 </div>
-                <button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="room-detail-close shrink-0" aria-label="關閉老師教室借用確認視窗">
+                <button type="button" id="teacher-classroom-approval-close" onclick="window.closeTeacherClassroomApprovalModal()" class="room-detail-close shrink-0" aria-label="關閉老師教室借用確認視窗">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
@@ -1829,6 +2066,13 @@ body::before {
     
     <div id="batch-location-modal" class="mod-w hidden"><div class="bg-white p-6 rounded-3xl w-80 shadow-2xl relative text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3 text-blue-600"><i data-lucide="map-pin" class="w-6 h-6"></i></div><h3 class="font-black mb-1 text-xl">修改存放地點</h3><p class="text-xs text-gray-500 mb-5">將為 <span id="batch-location-count" class="font-bold text-blue-600">0</span> 項設備更新地點</p><div class="space-y-4 mb-6"><input type="text" id="batch-new-location" class="inp text-center font-bold" placeholder="請輸入新的存放地點 (例: D205)"></div><div class="flex-r gap-3"><button onclick="window.closeBatchEditLocationModal()" class="btn btn-g flex-1 py-2.5">取消</button><button onclick="window.confirmBatchEditLocation()" class="btn btn-b flex-1 py-2.5 shadow-md">確定修改</button></div></div></div>
 
+    <div id="global-loading-overlay" class="loading-overlay hidden">
+        <div class="loading-overlay-panel">
+            <div class="loading-spinner"></div>
+            <div id="global-loading-title" class="loading-overlay-title">系統處理中</div>
+            <div id="global-loading-message" class="loading-overlay-message">資料同步中，請稍候一下。</div>
+        </div>
+    </div>
     <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all px-6 py-3 rounded-xl text-white z-[100] shadow-xl font-bold text-sm">訊息</div>
 </div>
 
@@ -1862,6 +2106,7 @@ body::before {
     window.teacherScheduleTemplateDayMap = window.teacherScheduleTemplateDayMap || [null, 5, 4, 3, 2, 1];
     window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
     window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
+    window.loadingOverlayDepth = window.loadingOverlayDepth || 0;
     
     window.currentEquipPage = window.currentEquipPage || 1; 
     window.equipSearchTerm = window.equipSearchTerm || ''; 
@@ -1923,6 +2168,25 @@ body::before {
         t.style.backgroundColor=type==='success'?'#10b981':'#ef4444'; 
         t.classList.remove('translate-y-20', 'opacity-0'); 
         setTimeout(()=>t.classList.add('translate-y-20', 'opacity-0'), 3000); 
+    };
+
+    window.showLoadingOverlay = function(message = '資料同步中，請稍候一下。', title = '系統處理中') {
+        const overlay = $('global-loading-overlay');
+        if(!overlay) return;
+        window.loadingOverlayDepth = (window.loadingOverlayDepth || 0) + 1;
+        if($('global-loading-title')) $('global-loading-title').innerText = title;
+        if($('global-loading-message')) $('global-loading-message').innerText = message;
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
+    };
+
+    window.hideLoadingOverlay = function(force = false) {
+        const overlay = $('global-loading-overlay');
+        if(force) window.loadingOverlayDepth = 0;
+        else window.loadingOverlayDepth = Math.max((window.loadingOverlayDepth || 0) - 1, 0);
+        if(!overlay || window.loadingOverlayDepth > 0) return;
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
     };
 
     window.maskPhone = function(p) { 
@@ -3840,6 +4104,7 @@ body::before {
             url.searchParams.delete('classroomApproval');
             window.history.replaceState({}, '', url.toString());
         } catch(err) {}
+        window.syncClassroomApprovalRouteMode();
     };
 
     window.getClassroomApprovalIdFromUrl = function() {
@@ -3848,6 +4113,15 @@ body::before {
         } catch(err) {
             return '';
         }
+    };
+
+    window.isClassroomApprovalRouteMode = function() {
+        return !!window.getClassroomApprovalIdFromUrl();
+    };
+
+    window.syncClassroomApprovalRouteMode = function() {
+        if(!document.body || !document.body.classList) return;
+        document.body.classList.toggle('approval-route-mode', window.isClassroomApprovalRouteMode());
     };
 
     window.getClassroomApprovalQrImageUrl = function(link) {
@@ -3963,6 +4237,7 @@ body::before {
     };
 
     window.closeTeacherClassroomApprovalModal = function() {
+        if(window.isClassroomApprovalRouteMode()) return;
         hide('teacher-classroom-approval-modal');
         window.clearClassroomApprovalQuery();
     };
@@ -3970,13 +4245,16 @@ body::before {
     window.renderTeacherClassroomApprovalModal = function(record) {
         const body = $('teacher-classroom-approval-body');
         if(!body) return;
+        const lockedMode = window.isClassroomApprovalRouteMode();
         if(!record) {
             body.innerHTML =
                 '<div class="rounded-[1.6rem] border border-red-100 bg-red-50 px-5 py-6 text-center text-red-700">' +
                     '<div class="text-lg font-black">找不到這筆教室借用申請</div>' +
                     '<p class="mt-2 text-sm font-medium leading-7">可能是連結已過期、資料尚未同步，或申請已被刪除。</p>' +
                 '</div>' +
-                '<div class="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center"><button type="button" onclick="window.handleTeacherClassroomApprovalRoute()" class="btn btn-b px-5 py-3 shadow-md"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新載入</button><button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="btn btn-g px-5 py-3">關閉</button></div>';
+                '<div class="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center"><button type="button" onclick="window.handleTeacherClassroomApprovalRoute()" class="btn btn-b px-5 py-3 shadow-md"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新載入</button>' +
+                (lockedMode ? '' : '<button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="btn btn-g px-5 py-3">關閉</button>') +
+                '</div>';
             if(window.lucide) window.lucide.createIcons();
             return;
         }
@@ -3986,37 +4264,58 @@ body::before {
         const status = window.getStatus(record);
         const isPending = status === '待審核';
         const suggestedTeacherName = borrowerMeta.responsible || '';
+        let statusClass = 'other', statusText = status || '狀態未設定';
+        if(isPending) {
+            statusClass = 'pending';
+            statusText = '待老師回覆';
+        } else if(status.startsWith('借用中')) {
+            statusClass = 'approved';
+            statusText = '已同意借用';
+        } else if(status === '已拒絕') {
+            statusClass = 'rejected';
+            statusText = '已拒絕借用';
+        }
 
         let stateHtml = '';
         if(!window.isTeacherApprovalClassroomRequest(record)) {
             stateHtml = '<div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">這筆申請沒有設定負責老師，因此不適用 QR 老師確認流程。</div>';
         } else if(status === '已拒絕') {
-            stateHtml = '<div class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">這筆教室借用申請已被回覆為不同意。</div>';
+            stateHtml = '<div class="teacher-approval-notice !border-red-100 !bg-red-50 !text-red-700">這筆教室借用申請已被回覆為不同意。</div>';
         } else if(status.startsWith('借用中')) {
-            stateHtml = '<div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">這筆教室借用申請已完成老師確認，系統狀態已同步更新。</div>';
+            stateHtml = '<div class="teacher-approval-notice !border-emerald-100 !bg-emerald-50 !text-emerald-700">這筆教室借用申請已完成老師確認，系統狀態已同步更新。</div>';
         } else {
-            stateHtml = '<div class="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700">請確認是否同意該學生在以下時段借用教室。</div>';
+            stateHtml = '<div class="teacher-approval-notice">請確認是否同意該學生在以下時段借用教室。</div>';
         }
 
         body.innerHTML =
-            stateHtml +
-            '<div class="mt-5 grid gap-4 md:grid-cols-2">' +
-                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">學生 / 單位</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml((borrowerMeta.unit ? borrowerMeta.unit + ' - ' : '') + (borrowerMeta.borrower || '未填寫')) + '</div></div>' +
-                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">負責老師</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(borrowerMeta.responsible || '未指定') + '</div></div>' +
-                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">借用教室</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.room || '未指定') + '</div></div>' +
-                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">借用日期 / 時段</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.date ? classroomMeta.date.replace(/-/g, '/') : '未指定') + '</div><div class="mt-1 text-sm font-bold text-slate-500">' + window.escapeHtml(classroomMeta.start && classroomMeta.end ? (classroomMeta.start + ' - ' + classroomMeta.end) : '時間未設定') + '</div></div>' +
-            '</div>' +
-            '<div class="mt-5 rounded-[1.4rem] border border-slate-200 bg-white p-4">' +
-                '<label class="lbl text-slate-600">回覆教師姓名</label>' +
-                '<input type="text" id="teacher-classroom-approval-name" class="inp mt-2" value="' + window.escapeHtml(suggestedTeacherName) + '" placeholder="請輸入老師姓名">' +
-                '<p class="mt-2 text-xs font-medium text-slate-400">送出後將直接更新原申請狀態。</p>' +
-            '</div>' +
-            '<div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">' +
-                '<button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="btn btn-g px-5 py-3">關閉</button>' +
-                (isPending && window.isTeacherApprovalClassroomRequest(record)
-                    ? '<button type="button" onclick="window.submitTeacherClassroomApproval(\'reject\')" class="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-5 py-3 shadow-none">不同意借用</button><button type="button" onclick="window.submitTeacherClassroomApproval(\'approve\')" class="btn bg-emerald-600 text-white hover:bg-emerald-700 px-5 py-3 shadow-md"><i data-lucide="shield-check" class="w-4 h-4"></i> 同意借用</button>'
-                    : ''
-                ) +
+            '<div class="mx-auto max-w-[42rem]">' +
+                '<div class="flex flex-col gap-4">' +
+                    '<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">' +
+                        '<div>' +
+                            '<div class="teacher-approval-badge"><i data-lucide="scan-line" class="w-4 h-4"></i> Teacher Approval</div>' +
+                            '<h4 class="mt-4 text-[1.45rem] font-black leading-tight text-slate-900 sm:text-[1.8rem]">' + (lockedMode ? '教室借用審核頁面' : '教室借用確認') + '</h4>' +
+                            '<p class="mt-2 text-sm font-medium leading-7 text-slate-500">老師確認後會直接同步更新原申請，這頁不需要再切回系統首頁。</p>' +
+                        '</div>' +
+                        '<span class="teacher-approval-status-pill ' + statusClass + '">' + window.escapeHtml(statusText) + '</span>' +
+                    '</div>' +
+                    stateHtml +
+                    '<div class="teacher-approval-grid">' +
+                        '<div class="teacher-approval-field"><div class="teacher-approval-label">學生 / 單位</div><div class="teacher-approval-value">' + window.escapeHtml((borrowerMeta.unit ? borrowerMeta.unit + ' - ' : '') + (borrowerMeta.borrower || '未填寫')) + '</div></div>' +
+                        '<div class="teacher-approval-field"><div class="teacher-approval-label">負責老師</div><div class="teacher-approval-value">' + window.escapeHtml(borrowerMeta.responsible || '未指定') + '</div></div>' +
+                        '<div class="teacher-approval-field"><div class="teacher-approval-label">借用教室</div><div class="teacher-approval-value">' + window.escapeHtml(classroomMeta.room || '未指定') + '</div></div>' +
+                        '<div class="teacher-approval-field"><div class="teacher-approval-label">借用日期 / 時段</div><div class="teacher-approval-value">' + window.escapeHtml(classroomMeta.date ? classroomMeta.date.replace(/-/g, '/') : '未指定') + '</div><div class="teacher-approval-subvalue">' + window.escapeHtml(classroomMeta.start && classroomMeta.end ? (classroomMeta.start + ' - ' + classroomMeta.end) : '時間未設定') + '</div></div>' +
+                    '</div>' +
+                    (isPending && window.isTeacherApprovalClassroomRequest(record)
+                        ? '<div class="teacher-approval-input-shell"><label class="lbl text-slate-700 mb-0">回覆教師姓名</label><input type="text" id="teacher-classroom-approval-name" class="inp mt-3" value="' + window.escapeHtml(suggestedTeacherName) + '" placeholder="請輸入老師姓名"><p class="teacher-approval-helper">送出後將直接更新原申請狀態，不需要再回首頁操作。</p></div>'
+                        : ''
+                    ) +
+                    '<div class="teacher-approval-actions"><div class="teacher-approval-actions-inner">' +
+                        (isPending && window.isTeacherApprovalClassroomRequest(record)
+                            ? '<button type="button" onclick="window.submitTeacherClassroomApproval(\'reject\')" class="btn teacher-approval-button bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 shadow-none">不同意借用</button><button type="button" onclick="window.submitTeacherClassroomApproval(\'approve\')" class="btn teacher-approval-button bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"><i data-lucide="shield-check" class="w-4 h-4"></i> 同意借用</button>'
+                            : '<button type="button" onclick="window.handleTeacherClassroomApprovalRoute()" class="btn teacher-approval-button btn-g border border-slate-200">重新整理狀態</button><button type="button" class="btn teacher-approval-button bg-slate-900 text-white border border-slate-900 shadow-md" disabled>本筆審核已完成</button>'
+                        ) +
+                    '</div></div>' +
+                '</div>' +
             '</div>';
 
         show('teacher-classroom-approval-modal');
@@ -4026,9 +4325,10 @@ body::before {
     window.handleTeacherClassroomApprovalRoute = async function() {
         const approvalId = window.getClassroomApprovalIdFromUrl();
         if(!approvalId) return;
+        window.syncClassroomApprovalRouteMode();
         const body = $('teacher-classroom-approval-body');
         if(body) {
-            body.innerHTML = '<div class="rounded-[1.6rem] border border-sky-100 bg-sky-50 px-5 py-8 text-center text-sky-700"><div class="text-lg font-black">正在載入借用資料</div><p class="mt-2 text-sm font-medium leading-7">請稍候，我們正在同步這筆教室借用申請。</p></div>';
+            body.innerHTML = '<div class="mx-auto max-w-[42rem]"><div class="teacher-approval-badge"><i data-lucide="scan-line" class="w-4 h-4"></i> Teacher Approval</div><div class="mt-5 teacher-approval-notice">正在載入借用資料，請稍候，我們正在同步這筆教室借用申請。</div></div>';
         }
         show('teacher-classroom-approval-modal');
         const record = window.findRecordById(approvalId) || await (async () => {
@@ -4045,9 +4345,7 @@ body::before {
         const teacherName = $('teacher-classroom-approval-name') ? $('teacher-classroom-approval-name').value.trim() : '';
         if(!teacherName) return window.showToast('請填寫回覆教師姓名', 'error');
         const nextStatus = decision === 'approve' ? ('借用中 (教師同意: ' + teacherName + ')') : '已拒絕';
-        await window.executeReturn(approvalId, nextStatus);
-        await window.sleep(700);
-        await window.fetchData(true);
+        await window.executeReturn(approvalId, nextStatus, decision === 'approve' ? '正在送出同意結果，請稍候...' : '正在送出不同意結果，請稍候...');
         const latestRecord = window.findRecordById(approvalId) || record;
         window.renderTeacherClassroomApprovalModal(latestRecord);
     };
@@ -4954,18 +5252,45 @@ body::before {
         hide('room-detail-modal');
     };
 
-    window.executeReturn = async function(id, status) {
+    window.executeReturn = async function(id, status, loadingMessage = '正在同步狀態，請稍候...') {
         const gasUrlNode = $('gas-url'); const gasUrl = gasUrlNode ? gasUrlNode.value.trim() : '';
-        if (!gasUrl.startsWith('http')) { 
-            const target = window.mockDatabase.find(r => String(r.ID||r.id) === String(id)); 
-            if (target) { target.狀態 = status; target.status = status; if (status.includes('已歸還') || status.includes('已拒絕')) { target.歸還時間 = new Date().toLocaleString('zh-TW', { hour12: false }); target.returningTime = target.歸還時間; } window.showToast('狀態更新成功 (模擬)'); window.fetchData(true); } 
-            return; 
+        window.showLoadingOverlay(loadingMessage, '處理中');
+        try {
+            if (!gasUrl.startsWith('http')) {
+                [window.mockDatabase, window.windowData].filter(Boolean).forEach(source => {
+                    const target = source.find(r => String(r.ID||r.id) === String(id));
+                    if (!target) return;
+                    target.狀態 = status;
+                    target.status = status;
+                    if (status.includes('已歸還') || status.includes('已拒絕')) {
+                        target.歸還時間 = new Date().toLocaleString('zh-TW', { hour12: false });
+                        target.returningTime = target.歸還時間;
+                    }
+                });
+                await window.fetchData(true);
+                window.showToast('狀態更新成功 (模擬)');
+                return true;
+            }
+
+            let responseOk = false;
+            try {
+                const response = await fetch(gasUrl, { method: 'POST', body: JSON.stringify({ action: 'return', id, ID: id, status, 狀態: status }), headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
+                responseOk = !!response.ok;
+            } catch (err) {
+                window.showToast('更新失敗，請檢查網路', 'error');
+                return false;
+            }
+
+            await window.sleep(450);
+            await window.fetchData(true);
+            window.showToast(responseOk ? '狀態更新成功' : '狀態更新請求已送出');
+            return responseOk;
+        } catch(e) {
+            window.showToast('更新失敗，請檢查網路', 'error');
+            return false;
+        } finally {
+            window.hideLoadingOverlay();
         }
-        try { 
-            fetch(gasUrl, { method: 'POST', body: JSON.stringify({ action: 'return', id, ID: id, status, 狀態: status }), headers: { 'Content-Type': 'text/plain;charset=utf-8' } })
-            .then(() => { window.showToast('狀態更新成功'); setTimeout(() => { window.fetchData(true); }, 500); })
-            .catch(() => { window.showToast('狀態更新請求已送出'); setTimeout(() => { window.fetchData(true); }, 500); }); 
-        } catch(e) { window.showToast('更新失敗，請檢查網路', 'error'); }
     };
 
     window.executeDelete = async function(id) {
@@ -5078,6 +5403,7 @@ body::before {
 
     window.submitBorrow = async function(e, type) {
         e.preventDefault(); const btn=e.target.querySelector('button[type="submit"]'); if(btn) btn.disabled=true;
+        let loadingShown = false;
         try {
             const bN=$(`borrower-${type}`).value.trim(), bP=$(`borrower-phone-${type}`).value.trim(), bC=$(`borrower-class-${type}`)?$(`borrower-class-${type}`).value:''; let bor=(bC?'[' + bC + '] ':'')+bN;
             const rC=$(`resp-teacher-container-${type}`)||$('resp-teacher-container'), rN=$(`responsible-teacher-${type}`);
@@ -5104,6 +5430,8 @@ body::before {
                 time: payload.time
             };
             const gasUrl=$('gas-url')?$('gas-url').value.trim():'';
+            window.showLoadingOverlay(needsTeacherQrApproval ? '正在送出申請並建立老師審核 QR，請稍候...' : '正在送出申請並同步資料，請稍候...', '送出申請中');
+            loadingShown = true;
             if(!gasUrl.startsWith('http')){
                 const savedRecord = { ...payload };
                 (window.mockDatabase=window.mockDatabase||[]).unshift(savedRecord);
@@ -5150,10 +5478,11 @@ body::before {
                 window.switchTab('report-tab');
             }
         } catch(err) { window.showToast('錯誤', 'error'); if(btn)btn.disabled=false; }
-        finally { if(btn) btn.disabled=false; }
+        finally { if(loadingShown) window.hideLoadingOverlay(); if(btn) btn.disabled=false; }
     };
 
     window.init = function() { 
+        window.syncClassroomApprovalRouteMode();
         const t = window.getLocalDateString(); window.lastKnownDateStr = t; 
         if($('report-start-date')) $('report-start-date').value = t; 
         if($('report-end-date')) $('report-end-date').value = t;
