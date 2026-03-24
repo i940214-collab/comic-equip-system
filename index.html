@@ -2132,6 +2132,8 @@ try {
     window.teacherScheduleAiState = window.teacherScheduleAiState || { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
     window.teacherScheduleTemplateDayMap = window.teacherScheduleTemplateDayMap || [null, 5, 4, 3, 2, 1];
     window.teacherScheduleSettingsChunkSize = window.teacherScheduleSettingsChunkSize || 30000;
+    window.cloudSettingsMaxCharsPerField = window.cloudSettingsMaxCharsPerField || 47000;
+    window.lastSettingsSaveError = window.lastSettingsSaveError || '';
     window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
     window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
     window.loadingOverlayDepth = window.loadingOverlayDepth || 0;
@@ -2216,6 +2218,150 @@ try {
         if(!single) return [];
         const parsedSingle = typeof single.propertyNo === 'string' ? JSON.parse(single.propertyNo) : single.propertyNo;
         return Array.isArray(parsedSingle) ? parsedSingle : [];
+    };
+    window.parseCloudSettingsField = function(rawValue) {
+        if(rawValue == null) return null;
+        if(typeof rawValue !== 'string') return rawValue;
+        try {
+            return JSON.parse(rawValue);
+        } catch(error) {
+            return rawValue;
+        }
+    };
+    window.serializeTeacherSchedulesForCurriculum = function() {
+        const grouped = new Map();
+        (window.teacherSchedules || []).forEach(entry => {
+            const scheduleKey = String(entry && entry.scheduleKey || '').trim();
+            const day = Number(entry && entry.day);
+            const periodId = String(entry && entry.periodId || '').trim();
+            if(!scheduleKey || !day || !periodId) return;
+            if(!grouped.has(scheduleKey)) grouped.set(scheduleKey, []);
+            grouped.get(scheduleKey).push([
+                day,
+                periodId,
+                String(entry && entry.courseName || '').trim(),
+                String(entry && entry.location || '').trim()
+            ]);
+        });
+        const teachers = Array.from(grouped.entries())
+            .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'zh-Hant'))
+            .map(([scheduleKey, items]) => [
+                scheduleKey,
+                items.sort((a, b) => {
+                    if(Number(a[0]) !== Number(b[0])) return Number(a[0]) - Number(b[0]);
+                    return window.getTeacherSchedulePeriodOrder(a[1]) - window.getTeacherSchedulePeriodOrder(b[1]);
+                })
+            ]);
+        return JSON.stringify({ v: 1, f: 'curriculum-v1', t: teachers });
+    };
+    window.deserializeTeacherSchedulesFromCurriculum = function(rawValue) {
+        const parsed = typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue;
+        if(Array.isArray(parsed)) return parsed;
+        if(!parsed || typeof parsed !== 'object') return null;
+        if(parsed.f !== 'curriculum-v1' || !Array.isArray(parsed.t)) return null;
+        const result = [];
+        parsed.t.forEach(group => {
+            if(!Array.isArray(group) || group.length < 2) return;
+            const scheduleKey = String(group[0] || '').trim();
+            const items = Array.isArray(group[1]) ? group[1] : [];
+            if(!scheduleKey) return;
+            items.forEach(item => {
+                if(!Array.isArray(item) || item.length < 2) return;
+                const day = Number(item[0]);
+                const periodId = String(item[1] || '').trim();
+                if(!day || !periodId) return;
+                result.push({
+                    scheduleKey,
+                    day,
+                    periodId,
+                    courseName: String(item[2] || '').trim(),
+                    location: String(item[3] || '').trim()
+                });
+            });
+        });
+        return result;
+    };
+    window.hasTeacherScheduleCloudPayload = function(settingData, parsedRows, eqRaw) {
+        const settingsData = settingData && typeof settingData === 'object' ? settingData : {};
+        const rows = parsedRows && typeof parsedRows === 'object' ? parsedRows : {};
+        if(rows.curriculum != null && rows.curriculum !== '') return true;
+        if(Object.keys(settingsData).some(key => /^teacherSchedules(?:__PART__\d+|_\d{3})$/i.test(key))) return true;
+        if(Array.isArray(eqRaw) && eqRaw.some(entry => entry && (entry.name === 'TEACHER_SCHEDULES' || /^TEACHER_SCHEDULES__PART__\d+$/.test(String(entry.name || ''))))) return true;
+        return ['equipment', 'teachers', 'keys', 'classes'].some(key => {
+            const value = rows[key];
+            return value && typeof value === 'object' && !Array.isArray(value) && typeof value.teacherSchedulePart === 'string';
+        });
+    };
+    window.buildCloudSettingsRows = function() {
+        const maxChars = Math.max(Number(window.cloudSettingsMaxCharsPerField) || 47000, 22000);
+        const curriculumPayload = window.serializeTeacherSchedulesForCurriculum();
+        if(curriculumPayload.length > maxChars) {
+            throw new Error('curriculum 這一列的可存字數仍不足，請再擴充後端或改成獨立工作表。');
+        }
+        return {
+            equipment: JSON.stringify({
+                version: 4,
+                items: Array.isArray(window.equipmentList) ? window.equipmentList : [],
+                system: {
+                    periods: Array.isArray(window.periodList) ? window.periodList : [],
+                    roomSchedules: window.roomSchedules || {},
+                    exhibitionAnnouncement: window.exhibitionAnnouncement || ''
+                }
+            }),
+            teachers: JSON.stringify({
+                version: 4,
+                list: Array.isArray(window.teacherList) ? window.teacherList : []
+            }),
+            keys: JSON.stringify({
+                version: 4,
+                list: Array.isArray(window.keyList) ? window.keyList : []
+            }),
+            classes: JSON.stringify({
+                version: 4,
+                list: Array.isArray(window.classList) ? window.classList : []
+            }),
+            curriculum: curriculumPayload
+        };
+    };
+    window.buildParsedCloudSettingsRows = function(settingData) {
+        const source = settingData && typeof settingData === 'object' ? settingData : {};
+        return {
+            equipment: window.parseCloudSettingsField(source.equipment),
+            teachers: window.parseCloudSettingsField(source.teachers),
+            keys: window.parseCloudSettingsField(source.keys),
+            classes: window.parseCloudSettingsField(source.classes),
+            curriculum: window.parseCloudSettingsField(source.curriculum)
+        };
+    };
+    window.readTeacherScheduleSettingsFromCloudData = function(settingData, parsedRows, eqRaw) {
+        const settingsData = settingData && typeof settingData === 'object' ? settingData : {};
+        const rows = parsedRows && typeof parsedRows === 'object' ? parsedRows : {};
+        try {
+            const curriculumParsed = window.deserializeTeacherSchedulesFromCurriculum(rows.curriculum);
+            if(Array.isArray(curriculumParsed)) return curriculumParsed;
+        } catch(error) {}
+        const extraPartKeys = Object.keys(settingsData)
+            .filter(key => /^teacherSchedules(?:__PART__\d+|_\d{3})$/i.test(key))
+            .sort((a, b) => a.localeCompare(b));
+        if(extraPartKeys.length) {
+            const joinedExtraParts = extraPartKeys.map(key => String(settingsData[key] || '')).join('');
+            if(joinedExtraParts) {
+                const parsedExtra = JSON.parse(joinedExtraParts);
+                return Array.isArray(parsedExtra) ? parsedExtra : [];
+            }
+        }
+        const wrappedParts = ['equipment', 'teachers', 'keys', 'classes']
+            .map(key => rows[key])
+            .filter(value => value && typeof value === 'object' && !Array.isArray(value) && typeof value.teacherSchedulePart === 'string')
+            .map(value => value.teacherSchedulePart);
+        if(wrappedParts.some(Boolean)) {
+            const joinedWrappedParts = wrappedParts.join('');
+            if(joinedWrappedParts) {
+                const parsedWrapped = JSON.parse(joinedWrappedParts);
+                return Array.isArray(parsedWrapped) ? parsedWrapped : [];
+            }
+        }
+        return window.readTeacherScheduleSettingsFromEquipment(eqRaw);
     };
     window.extractTeacherApprovalNameFromStatus = function(statusText) {
         const match = String(statusText || '').match(/教師同意:\s*([^()]+)/);
@@ -3796,7 +3942,7 @@ try {
             window.renderTeacherScheduleAiState();
             window.showToast('課表已匯入');
         } else {
-            window.teacherScheduleAiState.errorMsg = '課表已解析，但寫入正式資料失敗。';
+            window.teacherScheduleAiState.errorMsg = '課表已解析，但寫入正式資料失敗。' + (window.lastSettingsSaveError ? ' 原因：' + window.lastSettingsSaveError : '');
             window.renderTeacherScheduleAiState();
             window.showToast('匯入失敗', 'error');
         }
@@ -4822,27 +4968,49 @@ try {
     
     window.saveSettingsToCloud = async function() {
         window.ensureTeacherScheduleTeacherDefaults();
+        window.lastSettingsSaveError = '';
         const u=$('gas-url')?$('gas-url').value.trim():'';
+        localStorage.setItem('customEquipmentList',JSON.stringify(window.equipmentList));
+        localStorage.setItem('teacherList',JSON.stringify(window.teacherList));
+        localStorage.setItem('customKeyList',JSON.stringify(window.keyList));
+        localStorage.setItem('customClassList',JSON.stringify(window.classList));
+        localStorage.setItem('periodList',JSON.stringify(window.periodList));
+        localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));
+        localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
+        localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement);
         if(!u.startsWith('http')){
-            localStorage.setItem('customEquipmentList',JSON.stringify(window.equipmentList));
-            localStorage.setItem('teacherList',JSON.stringify(window.teacherList));
-            localStorage.setItem('customKeyList',JSON.stringify(window.keyList));
-            localStorage.setItem('customClassList',JSON.stringify(window.classList));
-            localStorage.setItem('periodList',JSON.stringify(window.periodList));
-            localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));
-            localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
-            localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement);
             return true;
         }
         try {
-            const payload=[...window.equipmentList];
-            payload.push({category:'__SYSTEM_SETTINGS__',name:'PERIODS',propertyNo:JSON.stringify(window.periodList),location:'SYSTEM'});
-            payload.push({category:'__SYSTEM_SETTINGS__',name:'ROOM_SCHEDULES',propertyNo:JSON.stringify(window.roomSchedules),location:'SYSTEM'});
-            payload.push(...window.buildTeacherScheduleSettingsPayload());
-            payload.push({category:'__SYSTEM_SETTINGS__',name:'EXHIBITION_ANNOUNCEMENT',propertyNo:window.exhibitionAnnouncement,location:'SYSTEM'});
-            const res=await fetch(u, {method:'POST',body:JSON.stringify({action:'saveSettings',equipment:JSON.stringify(payload),teachers:JSON.stringify(window.teacherList),keys:JSON.stringify(window.keyList),classes:JSON.stringify(window.classList)}),headers:{'Content-Type':'text/plain;charset=utf-8'}});
-            return (await res.json()).status==='success';
-        } catch(err){ return false; }
+            const cloudRows = window.buildCloudSettingsRows();
+            const res=await fetch(u, {method:'POST',body:JSON.stringify({action:'saveSettings',equipment:cloudRows.equipment,teachers:cloudRows.teachers,keys:cloudRows.keys,classes:cloudRows.classes,curriculum:cloudRows.curriculum}),headers:{'Content-Type':'text/plain;charset=utf-8'}});
+            const result = await res.json();
+            if(result.status === 'success') {
+                try {
+                    const verifyRes = await fetch(u + '?action=getSettings&t=' + Date.now());
+                    const verifyJson = await verifyRes.json();
+                    const verifyData = verifyJson && verifyJson.data ? verifyJson.data : {};
+                    const verifyParsedRows = window.buildParsedCloudSettingsRows(verifyData);
+                    const verifyEqRaw = verifyParsedRows.equipment;
+                    const verifyTeacherSchedules = window.readTeacherScheduleSettingsFromCloudData(verifyData, verifyParsedRows, Array.isArray(verifyEqRaw) ? verifyEqRaw : []);
+                    const hasCurriculumPayload = window.hasTeacherScheduleCloudPayload(verifyData, verifyParsedRows, Array.isArray(verifyEqRaw) ? verifyEqRaw : []);
+                    const expectedCount = (window.teacherSchedules || []).length;
+                    if(expectedCount > 0 && (!hasCurriculumPayload || !Array.isArray(verifyTeacherSchedules) || verifyTeacherSchedules.length < expectedCount)) {
+                        window.lastSettingsSaveError = '雲端端點目前沒有把 curriculum 寫回 Google Sheet。前端已送出資料，但 Apps Script 的 saveSettings / getSettings 還沒支援 curriculum。';
+                        return false;
+                    }
+                } catch(error) {
+                    window.lastSettingsSaveError = '雲端已回應成功，但無法回讀驗證 curriculum 是否真的寫入。';
+                    return false;
+                }
+                return true;
+            }
+            window.lastSettingsSaveError = result.message || result.error || '雲端回傳儲存失敗。';
+            return false;
+        } catch(err){
+            window.lastSettingsSaveError = err && err.message ? err.message : '寫入雲端時發生未知錯誤。';
+            return false;
+        }
     };
     
     window.loadSettingsFromCloud = async function() {
@@ -4852,27 +5020,63 @@ try {
                 const res=await fetch(u + '?action=getSettings&t=' + Date.now());
                 const r=await res.json();
                 if(r.data){
-                    if(r.data.equipment){
-                        const eqRaw=typeof r.data.equipment==='string'?JSON.parse(r.data.equipment):r.data.equipment;
+                    const parsedRows = window.buildParsedCloudSettingsRows(r.data);
+                    const eqRaw = parsedRows.equipment;
+                    if(Array.isArray(eqRaw)){
                         const pS=eqRaw.find(e=>e.name==='PERIODS');
                         if(pS){try{window.periodList=typeof pS.propertyNo==='string'?JSON.parse(pS.propertyNo):pS.propertyNo;}catch(e){}}
                         const sS=eqRaw.find(e=>e.name==='ROOM_SCHEDULES');
                         if(sS){try{window.roomSchedules=typeof sS.propertyNo==='string'?JSON.parse(sS.propertyNo):sS.propertyNo;localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));}catch(e){}}
-                        try{
-                            const loadedTeacherSchedules = window.readTeacherScheduleSettingsFromEquipment(eqRaw);
-                            if(Array.isArray(loadedTeacherSchedules) && loadedTeacherSchedules.length >= 0){
-                                window.teacherSchedules = loadedTeacherSchedules;
-                                localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
-                            }
-                        }catch(e){}
                         const annS=eqRaw.find(e=>e.name==='EXHIBITION_ANNOUNCEMENT');
                         if(annS){window.exhibitionAnnouncement=annS.propertyNo||'';}
                         window.equipmentList=eqRaw.filter(e=>e.category!=='__SYSTEM_SETTINGS__');
+                    } else if(eqRaw && typeof eqRaw === 'object') {
+                        if(eqRaw.system && Array.isArray(eqRaw.system.periods)) window.periodList = eqRaw.system.periods;
+                        if(eqRaw.system && eqRaw.system.roomSchedules && typeof eqRaw.system.roomSchedules === 'object') {
+                            window.roomSchedules = eqRaw.system.roomSchedules;
+                            localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));
+                        }
+                        if(eqRaw.system && typeof eqRaw.system.exhibitionAnnouncement === 'string') {
+                            window.exhibitionAnnouncement = eqRaw.system.exhibitionAnnouncement;
+                        }
+                        if(Array.isArray(eqRaw.items)) {
+                            window.equipmentList = eqRaw.items;
+                        }
                     }
-                    if(r.data.teachers) window.teacherList=typeof r.data.teachers==='string'?JSON.parse(r.data.teachers):r.data.teachers;
-                    if(r.data.classes) window.classList=typeof r.data.classes==='string'?JSON.parse(r.data.classes):r.data.classes;
-                    if(r.data.keys){
-                        window.keyList=typeof r.data.keys==='string'?JSON.parse(r.data.keys):r.data.keys;
+                    try{
+                        const loadedTeacherSchedules = window.readTeacherScheduleSettingsFromCloudData(r.data, parsedRows, Array.isArray(eqRaw) ? eqRaw : []);
+                        if(Array.isArray(loadedTeacherSchedules) && loadedTeacherSchedules.length >= 0){
+                            window.teacherSchedules = loadedTeacherSchedules;
+                            localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
+                        }
+                    }catch(e){}
+                    if((!window.teacherSchedules || window.teacherSchedules.length === 0) && !window.hasTeacherScheduleCloudPayload(r.data, parsedRows, Array.isArray(eqRaw) ? eqRaw : [])) {
+                        try {
+                            const localTeacherSchedules = JSON.parse(localStorage.getItem('teacherSchedules') || '[]');
+                            if(Array.isArray(localTeacherSchedules) && localTeacherSchedules.length) {
+                                window.teacherSchedules = localTeacherSchedules;
+                            }
+                        } catch(error) {}
+                    }
+                    const parsedTeachers = parsedRows.teachers;
+                    if(Array.isArray(parsedTeachers)) {
+                        window.teacherList = parsedTeachers;
+                    } else if(parsedTeachers && typeof parsedTeachers === 'object' && Array.isArray(parsedTeachers.list)) {
+                        window.teacherList = parsedTeachers.list;
+                    }
+                    const parsedClasses = parsedRows.classes;
+                    if(Array.isArray(parsedClasses)) {
+                        window.classList = parsedClasses;
+                    } else if(parsedClasses && typeof parsedClasses === 'object' && Array.isArray(parsedClasses.list)) {
+                        window.classList = parsedClasses.list;
+                    }
+                    const parsedKeys = parsedRows.keys;
+                    if(Array.isArray(parsedKeys)){
+                        window.keyList=parsedKeys;
+                        window.keyList = [...new Set(window.keyList.map(k => k === 'Y103走廊【櫥窗】' ? 'Y棟一樓走廊【櫥窗】' : k))];
+                        if(!window.keyList.includes('Y棟一樓走廊【櫥窗】')) window.keyList.push('Y棟一樓走廊【櫥窗】');
+                    } else if(parsedKeys && typeof parsedKeys === 'object' && Array.isArray(parsedKeys.list)) {
+                        window.keyList=parsedKeys.list;
                         window.keyList = [...new Set(window.keyList.map(k => k === 'Y103走廊【櫥窗】' ? 'Y棟一樓走廊【櫥窗】' : k))];
                         if(!window.keyList.includes('Y棟一樓走廊【櫥窗】')) window.keyList.push('Y棟一樓走廊【櫥窗】');
                     }
