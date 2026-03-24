@@ -1635,6 +1635,15 @@ try {
                         </div>
                     </div>
                 </div>
+                <div id="exhibition-blackout-banner" class="hidden mb-6 bg-gradient-to-r from-slate-50 to-blue-50 border border-slate-200 p-4 rounded-xl shadow-sm">
+                    <div class="flex items-start gap-3">
+                        <div class="bg-slate-100 p-2 rounded-lg text-slate-600 shrink-0"><i data-lucide="calendar-x-2" class="w-5 h-5"></i></div>
+                        <div class="flex-1 pt-0.5">
+                            <h4 class="text-sm font-black text-slate-900 mb-1">展覽空間不外借時段</h4>
+                            <div id="exhibition-blackout-text" class="flex flex-wrap gap-2 text-[13px] font-bold text-slate-700 leading-relaxed"></div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="flex-c lg:flex-row gap-6">
                     <div class="form-shell flex-1 p-6 md:p-8 relative overflow-hidden">
@@ -1778,7 +1787,7 @@ try {
 
         <!-- 管理員控制台 -->
         <div id="admin-tab" class="tab-content p-6 md:p-8 text-gray-800">
-            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
+            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2 flex-wrap"><button onclick="window.openExhibitionRestrictionModal()" id="btn-admin-exhibition-blackout" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex-r gap-1 whitespace-nowrap bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-sm"><i data-lucide="calendar-x-2" class="w-4 h-4"></i> 設定不外借時段</button><button onclick="window.openAnnouncementModal()" id="btn-admin-announcement" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex-r gap-1 whitespace-nowrap bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 shadow-sm"><i data-lucide="megaphone" class="w-4 h-4"></i> 編輯展覽公告</button><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
 
             <div class="mb-8 flex-r gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap no-print overflow-visible">
                 <button onclick="window.switchAdminSection('dashboard-section')" id="btn-admin-dashboard" class="a-btn a-act">教室借用現況</button>
@@ -1795,7 +1804,6 @@ try {
                     </div>
                 </div>
                 <button onclick="window.switchAdminSection('abnormal-section')" id="btn-admin-abnormal" class="a-btn">異常回報處理</button>
-                <button onclick="window.openAnnouncementModal()" id="btn-admin-announcement" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex-r gap-1 whitespace-nowrap bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 shadow-sm"><i data-lucide="megaphone" class="w-4 h-4"></i> 編輯展覽公告</button>
             </div>
             
             <div id="dashboard-section" class="admin-section-content block animate-fadeIn">
@@ -1994,6 +2002,25 @@ try {
     
     <!-- 展覽公告編輯 Modal -->
     <div id="announcement-modal" class="mod-w hidden"><div class="bg-white p-8 rounded-3xl w-full max-w-md shadow-2xl relative text-gray-800"><div class="flex-b mb-6 border-b pb-4"><h3 class="font-black text-xl text-amber-900 flex-r gap-2"><i data-lucide="megaphone" class="text-amber-600"></i> 編輯展覽公告</h3><button onclick="window.closeAnnouncementModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-full transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button></div><div class="space-y-4 mb-6"><div><label class="lbl text-amber-800 mb-2">公告內容 <span class="text-gray-400 font-normal text-xs">(留空則自動隱藏公告區塊)</span></label><textarea id="edit-announcement-text" class="inp font-medium text-gray-700 h-32 focus:ring-amber-500 border-amber-200" placeholder="請輸入要發布的展覽注意事項或公告..."></textarea></div></div><div class="flex-r gap-3"><button onclick="window.closeAnnouncementModal()" class="btn btn-g flex-1 py-3">取消</button><button onclick="window.saveAnnouncement()" class="btn bg-amber-500 text-white hover:bg-amber-600 flex-1 py-3 shadow-md flex justify-center items-center gap-2"><i data-lucide="send" class="w-4 h-4"></i> 儲存並發布</button></div></div></div>
+    <div id="exhibition-restriction-modal" class="mod-w hidden">
+        <div class="bg-white p-8 rounded-3xl w-full max-w-3xl shadow-2xl relative text-gray-800">
+            <div class="flex-b mb-6 border-b pb-4 gap-4">
+                <div>
+                    <h3 class="font-black text-xl text-slate-900 flex-r gap-2"><i data-lucide="calendar-x-2" class="text-slate-600"></i> 設定展覽不外借時段</h3>
+                    <p class="mt-2 text-sm font-medium text-slate-500">可設定寒假、暑假或整修期間。只要申請區間碰到這些日期，老師前台就不能送出展覽申請。</p>
+                </div>
+                <button onclick="window.closeExhibitionRestrictionModal()" class="text-gray-400 hover:text-gray-600 p-1 rounded-full transition-colors shrink-0"><i data-lucide="x" class="w-6 h-6"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div id="exhibition-restriction-list" class="space-y-3"></div>
+                <button type="button" onclick="window.addExhibitionRestrictionRow()" class="btn btn-g border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 px-4 py-2.5"><i data-lucide="plus-circle" class="w-4 h-4"></i> 新增限制時段</button>
+            </div>
+            <div class="mt-6 flex-r gap-3">
+                <button onclick="window.closeExhibitionRestrictionModal()" class="btn btn-g flex-1 py-3">取消</button>
+                <button onclick="window.saveExhibitionRestrictions()" class="btn bg-slate-800 text-white hover:bg-slate-900 flex-1 py-3 shadow-md flex justify-center items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 儲存設定</button>
+            </div>
+        </div>
+    </div>
 
     <div id="advanced-return-modal" class="mod-w hidden"><div class="bg-white p-6 rounded-3xl w-96 shadow-2xl text-gray-800"><h3 class="font-black mb-4 border-b pb-2 text-xl text-blue-900 flex-r gap-2"><i data-lucide="check-circle" class="text-green-600"></i> 歸還與狀況回報</h3><div id="return-remote-block" class="mb-5 font-bold"><label class="lbl">遙控器是否歸還？</label><div class="flex-r gap-6 p-3 bg-gray-50 border rounded-xl"><label class="flex-r gap-1.5 cursor-pointer text-blue-700"><input type="radio" name="remote_status" value="returned" checked class="w-4 h-4 text-blue-600"> 已歸還</label><label class="flex-r gap-1.5 cursor-pointer text-red-600"><input type="radio" name="remote_status" value="missing" class="w-4 h-4 text-red-600"> 未歸還</label></div></div><div class="mb-4 font-bold"><label class="lbl">設備是否有異常？</label><div class="flex-r gap-6 mb-3 p-3 bg-gray-50 border rounded-xl"><label class="flex-r gap-1.5 cursor-pointer text-green-700"><input type="radio" name="abnormal_status" value="no" checked onchange="window.toggleAbnormalDesc(false)" class="w-4 h-4 text-green-600"> 無異常</label><label class="flex-r gap-1.5 cursor-pointer text-orange-600"><input type="radio" name="abnormal_status" value="yes" onchange="window.toggleAbnormalDesc(true)" class="w-4 h-4 text-orange-500"> 有異常</label></div><textarea id="return-abnormal-desc" class="hidden inp bg-orange-50 border-orange-200 font-medium transition-shadow focus:ring-orange-400" placeholder="請具體描述異常狀況 (如：螢幕裂開、按鈕失效)..." rows="3"></textarea></div><div class="flex-r justify-end gap-3 mt-6"><button onclick="hide('advanced-return-modal')" class="btn btn-g px-5 py-2">取消</button><button onclick="window.confirmAdvancedReturn()" class="btn btn-b px-6 py-2 shadow-lg">確認送出</button></div></div></div>
     
@@ -2125,6 +2152,7 @@ try {
     window.autoRefreshTimer = null; 
     window.lastKnownDateStr = window.lastKnownDateStr || ''; 
     window.exhibitionAnnouncement = window.exhibitionAnnouncement || ''; 
+    window.exhibitionBlockedRanges = window.exhibitionBlockedRanges || JSON.parse(localStorage.getItem('exhibitionBlockedRanges') || '[]');
     window.currentTeacherScheduleTeacherKey = window.currentTeacherScheduleTeacherKey || '';
     window.currentAdminTeacherScheduleKey = window.currentAdminTeacherScheduleKey || '';
     window.teacherScheduleEditContext = window.teacherScheduleEditContext || null;
@@ -2305,7 +2333,8 @@ try {
                 system: {
                     periods: Array.isArray(window.periodList) ? window.periodList : [],
                     roomSchedules: window.roomSchedules || {},
-                    exhibitionAnnouncement: window.exhibitionAnnouncement || ''
+                    exhibitionAnnouncement: window.exhibitionAnnouncement || '',
+                    exhibitionBlockedRanges: Array.isArray(window.exhibitionBlockedRanges) ? window.exhibitionBlockedRanges : []
                 }
             }),
             teachers: JSON.stringify({
@@ -4303,6 +4332,22 @@ try {
             end: match[4]
         };
     };
+    window.isClassroomReservation = function(item) {
+        const eq = window.getEquip(item);
+        const st = window.getStatus(item);
+        if(!eq || !eq.includes('[預借教室]')) return false;
+        if(window.isPendingReviewStatus(item)) return false;
+        return st.includes('預約') || window.isUpcoming(item);
+    };
+    window.getClassroomReservationSortTime = function(item) {
+        const meta = window.parseClassroomReservation(window.getEquip(item));
+        if(meta.date && meta.start) {
+            const dt = new Date((meta.date + ' ' + meta.start + ':00').replace(/-/g, '/'));
+            const ts = dt.getTime();
+            if(!Number.isNaN(ts)) return ts;
+        }
+        return new Date(window.getTime(item)).getTime();
+    };
 
     window.makeBorrowRequestRef = function(prefix = 'borrow') {
         const randomPart = Math.random().toString(36).slice(2, 10);
@@ -4732,6 +4777,130 @@ try {
     window.closeAnnouncementModal = function() { hide('announcement-modal'); };
     window.saveAnnouncement = async function() { window.exhibitionAnnouncement = $('edit-announcement-text').value.trim(); window.renderAnnouncement(); window.showToast('正在同步公告...', 'success'); if(await window.saveSettingsToCloud()) { window.closeAnnouncementModal(); window.showToast('公告更新成功！'); } else { window.showToast('公告儲存失敗', 'error'); } };
     window.renderAnnouncement = function() { const banner = $('exhibition-announcement-banner'); const textEl = $('exhibition-announcement-text'); if(banner && textEl) { if(window.exhibitionAnnouncement && window.exhibitionAnnouncement !== '') { textEl.innerText = window.exhibitionAnnouncement; banner.classList.remove('hidden'); } else { banner.classList.add('hidden'); } } };
+    window.normalizeExhibitionBlockedRanges = function(ranges) {
+        return (Array.isArray(ranges) ? ranges : [])
+            .map((range, index) => {
+                const start = String(range && range.start || '').trim();
+                const end = String(range && range.end || '').trim();
+                if(!start || !end) return null;
+                return {
+                    id: String(range && range.id || ('blackout-' + index + '-' + start + '-' + end)),
+                    title: String(range && range.title || '展覽空間不外借').trim() || '展覽空間不外借',
+                    start,
+                    end
+                };
+            })
+            .filter(range => range && range.start <= range.end)
+            .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+    };
+    window.formatExhibitionBlockedRangeLabel = function(range) {
+        if(!range) return '';
+        const start = String(range.start || '').replace(/-/g, '/');
+        const end = String(range.end || '').replace(/-/g, '/');
+        const title = String(range.title || '展覽空間不外借').trim() || '展覽空間不外借';
+        return title + '｜' + start + ' ~ ' + end;
+    };
+    window.getExhibitionBlockedRangeMessage = function(range) {
+        if(!range) return '目前這段時間展覽空間暫不外借。';
+        const title = String(range.title || '展覽空間不外借').trim() || '展覽空間不外借';
+        const start = String(range.start || '').replace(/-/g, '/');
+        const end = String(range.end || '').replace(/-/g, '/');
+        return '該時段落在「' + title + '」期間（' + start + ' ~ ' + end + '），展覽空間暫不外借。';
+    };
+    window.findExhibitionBlockedRangeConflict = function(startDate, endDate) {
+        if(!startDate || !endDate) return null;
+        const targetStart = new Date(startDate + ' 00:00:00');
+        const targetEnd = new Date(endDate + ' 23:59:59');
+        return window.normalizeExhibitionBlockedRanges(window.exhibitionBlockedRanges).find(range => {
+            const rangeStart = new Date(range.start + ' 00:00:00');
+            const rangeEnd = new Date(range.end + ' 23:59:59');
+            return targetStart <= rangeEnd && targetEnd >= rangeStart;
+        }) || null;
+    };
+    window.renderExhibitionRestrictions = function() {
+        window.exhibitionBlockedRanges = window.normalizeExhibitionBlockedRanges(window.exhibitionBlockedRanges);
+        const banner = $('exhibition-blackout-banner');
+        const textEl = $('exhibition-blackout-text');
+        if(!banner || !textEl) return;
+        if(!window.exhibitionBlockedRanges.length) {
+            banner.classList.add('hidden');
+            textEl.innerHTML = '';
+            return;
+        }
+        textEl.innerHTML = window.exhibitionBlockedRanges.map(range => (
+            '<span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-black text-slate-700 shadow-sm">' + window.escapeHtml(window.formatExhibitionBlockedRangeLabel(range)) + '</span>'
+        )).join('');
+        banner.classList.remove('hidden');
+    };
+    window.collectExhibitionRestrictionRows = function() {
+        return Array.from(document.querySelectorAll('#exhibition-restriction-list .exhibition-blackout-row')).map(row => ({
+            title: row.querySelector('[data-field="title"]') ? row.querySelector('[data-field="title"]').value.trim() : '',
+            start: row.querySelector('[data-field="start"]') ? row.querySelector('[data-field="start"]').value : '',
+            end: row.querySelector('[data-field="end"]') ? row.querySelector('[data-field="end"]').value : ''
+        }));
+    };
+    window.renderExhibitionRestrictionEditor = function(ranges) {
+        const list = $('exhibition-restriction-list');
+        if(!list) return;
+        const safeRanges = Array.isArray(ranges) ? ranges : [];
+        if(!safeRanges.length) {
+            list.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-bold text-slate-400">目前尚未設定不外借時段，可按下方按鈕新增。</div>';
+            return;
+        }
+        list.innerHTML = safeRanges.map((range, index) => (
+            '<div class="exhibition-blackout-row grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(0,1.2fr)_minmax(140px,0.8fr)_minmax(140px,0.8fr)_auto] md:items-end">' +
+                '<div><label class="lbl text-slate-700">限制名稱</label><input data-field="title" type="text" value="' + window.escapeHtml(range.title || '') + '" placeholder="例如：暑假不外借" class="inp bg-white"></div>' +
+                '<div><label class="lbl text-slate-700">開始日期</label><input data-field="start" type="date" value="' + window.escapeHtml(range.start || '') + '" class="inp bg-white"></div>' +
+                '<div><label class="lbl text-slate-700">結束日期</label><input data-field="end" type="date" value="' + window.escapeHtml(range.end || '') + '" class="inp bg-white"></div>' +
+                '<button type="button" onclick="window.removeExhibitionRestrictionRow(' + index + ')" class="btn btn-r px-3 py-2.5"><i data-lucide="trash-2" class="w-4 h-4"></i></button>' +
+            '</div>'
+        )).join('');
+        if(window.lucide) window.lucide.createIcons();
+    };
+    window.openExhibitionRestrictionModal = function() {
+        const ranges = window.normalizeExhibitionBlockedRanges(window.exhibitionBlockedRanges);
+        window.renderExhibitionRestrictionEditor(ranges);
+        show('exhibition-restriction-modal');
+    };
+    window.closeExhibitionRestrictionModal = function() {
+        hide('exhibition-restriction-modal');
+    };
+    window.addExhibitionRestrictionRow = function() {
+        const ranges = window.collectExhibitionRestrictionRows();
+        ranges.push({ title: '', start: '', end: '' });
+        window.renderExhibitionRestrictionEditor(ranges);
+    };
+    window.removeExhibitionRestrictionRow = function(index) {
+        const ranges = window.collectExhibitionRestrictionRows();
+        ranges.splice(index, 1);
+        window.renderExhibitionRestrictionEditor(ranges);
+    };
+    window.saveExhibitionRestrictions = async function() {
+        const rows = window.collectExhibitionRestrictionRows();
+        const validRows = [];
+        for(let index = 0; index < rows.length; index += 1) {
+            const row = rows[index];
+            if(!row.title && !row.start && !row.end) continue;
+            if(!row.start || !row.end) return window.showToast('請把限制時段的開始與結束日期填完整', 'error');
+            if(row.start > row.end) return window.showToast('限制時段的結束日期不能早於開始日期', 'error');
+            validRows.push({
+                id: 'blackout-' + Date.now() + '-' + index,
+                title: row.title || '展覽空間不外借',
+                start: row.start,
+                end: row.end
+            });
+        }
+        window.exhibitionBlockedRanges = window.normalizeExhibitionBlockedRanges(validRows);
+        window.renderExhibitionRestrictions();
+        if(!$('exhibition-borrow-section').classList.contains('hidden')) window.renderExhibitionSchedule();
+        window.showToast('正在同步限制時段...', 'success');
+        if(await window.saveSettingsToCloud()) {
+            window.closeExhibitionRestrictionModal();
+            window.showToast('展覽不外借時段已更新');
+        } else {
+            window.showToast('限制時段儲存失敗', 'error');
+        }
+    };
 
     window.openConfirmModal = function(t, m, cb) { $('confirm-modal-title').innerHTML=t; $('confirm-modal-message').innerHTML=m; window.confirmActionCallbackLocal=cb; show('confirm-modal'); if(window.lucide) window.lucide.createIcons(); };
     window.closeConfirmModal = function() { hide('confirm-modal'); };
@@ -4779,7 +4948,10 @@ try {
         const btns = {'btn-borrow-key':'key-borrow-section', 'btn-borrow-equip':'equip-borrow-section', 'btn-borrow-classroom':'classroom-borrow-section', 'btn-borrow-exhibition':'exhibition-borrow-section'};
         Object.keys(btns).forEach(b=>{ if($(b)) $(b).className=(btns[b]===id)?"s-btn s-act":"s-btn"; });
         if(id === 'key-borrow-section') window.applyBorrowDefaultDates();
-        if(id==='exhibition-borrow-section') window.renderExhibitionSchedule();
+        if(id==='exhibition-borrow-section') {
+            window.renderExhibitionRestrictions();
+            window.renderExhibitionSchedule();
+        }
     };
 
     window.switchAdminSection = function(sId) {
@@ -4889,30 +5061,41 @@ try {
         const sp = $('equipment-exhibition')?$('equipment-exhibition').value:null, rc = $('exhibition-recommendations'); if(!rc) return;
         if(!sp) { rc.innerHTML = '<div class="flex-r gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> 請先選擇空間查看推薦</div>'; if(window.lucide) window.lucide.createIcons(); return; }
         const act = (window.windowData || window.mockDatabase || []).filter(d => { if(window.deletedIds && window.deletedIds.has(String(window.getId(d)))) return false; const eq = window.getEquip(d), st = window.getStatus(d); return eq.includes('[展覽空間]') && window.extractRoomName(eq) === sp && !st.includes('已歸還') && st !== '已拒絕' && st !== '已刪除'; });
+        const blockedRanges = window.normalizeExhibitionBlockedRanges(window.exhibitionBlockedRanges);
         let rs = []; act.forEach(i => { const m = window.getEquip(i).match(/\((.*?)\s*~\s*(.*?)\)/); if(m) rs.push({s: new Date(m[1]+' 00:00:00'), e: new Date(m[2]+' 23:59:59')}); });
+        blockedRanges.forEach(range => {
+            rs.push({ s: new Date(range.start + ' 00:00:00'), e: new Date(range.end + ' 23:59:59') });
+        });
         rs.sort((a,b)=>a.s-b.s); let mr = [];
         if(rs.length>0) { let c = rs[0]; for(let i=1; i<rs.length; i++) { if(rs[i].s <= c.e) c.e = new Date(Math.max(c.e, rs[i].e)); else { mr.push(c); c = rs[i]; } } mr.push(c); }
         let cur = new Date(); cur.setHours(0,0,0,0); let gaps = [];
         mr.forEach(r => { if(cur < r.s) { let ge = new Date(r.s); ge.setDate(ge.getDate()-1); gaps.push({s: new Date(cur), e: ge}); } if(cur <= r.e) { cur = new Date(r.e); cur.setDate(cur.getDate()+1); } });
         gaps.push({s: new Date(cur), e: null});
-        
+
         let html = '<div class="text-[13px] font-bold text-amber-800 mb-2">推薦空檔 (點擊套用)：</div><div class="flex flex-wrap gap-2">';
-        gaps.slice(0,4).forEach(x => {
+        const recommendedGaps = gaps.filter(x => !x.e || x.e >= x.s).slice(0,4);
+        recommendedGaps.forEach(x => {
             const ss = x.s.getFullYear() + '-' + String(x.s.getMonth()+1).padStart(2,'0') + '-' + String(x.s.getDate()).padStart(2,'0');
             if(x.e) { const es = x.e.getFullYear() + '-' + String(x.e.getMonth()+1).padStart(2,'0') + '-' + String(x.e.getDate()).padStart(2,'0'); html += '<button type="button" onclick="window.applyExhibitionDates(\'' + ss + '\',\'' + es + '\')" class="px-3 py-1.5 bg-white hover:bg-purple-100 text-purple-700 border border-purple-200/60 rounded-lg text-[13px] font-bold transition-all shadow-sm flex-r gap-1.5"><i data-lucide="calendar-plus" class="w-4 h-4 opacity-70"></i> ' + ss + ' ~ ' + es + '</button>'; } 
             else { html += '<button type="button" onclick="window.applyExhibitionDates(\'' + ss + '\',\'\')" class="px-3 py-1.5 bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200/60 rounded-lg text-[13px] font-bold transition-all shadow-sm flex-r gap-1.5"><i data-lucide="calendar-plus" class="w-4 h-4 opacity-70"></i> ' + ss + ' 之後</button>'; }
         });
+        if(recommendedGaps.length === 0) {
+            html += '<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-bold text-amber-700">目前沒有可直接推薦的空檔，請調整日期或先清空既有檔期 / 不外借設定。</div>';
+        }
         html += '</div>'; rc.innerHTML = html; if(window.lucide) window.lucide.createIcons();
     };
     window.applyExhibitionDates = function(startStr, endStr) { const startInput = $('reserve-start-exhibition'), endInput = $('reserve-end-exhibition'); if (startInput) startInput.value = startStr; if (endInput) { if (endStr) { endInput.value = endStr; } else { let d = new Date(startStr); d.setDate(d.getDate() + 6); endInput.value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); } } window.showToast('已套用推薦檔期！', 'success'); };
 
     window.renderExhibitionSchedule = function() {
-        const container = $('exhibition-schedule-container'); if (!container) return; window.updateExhibitionRecommendations(); 
+        const container = $('exhibition-schedule-container'); if (!container) return; window.renderExhibitionRestrictions(); window.updateExhibitionRecommendations(); 
         const data = window.windowData || window.mockDatabase || [];
         const activeExhibitions = data.filter(d => { if (window.deletedIds && window.deletedIds.has(String(window.getId(d)))) return false; const eq = window.getEquip(d), st = window.getStatus(d); return eq.includes('[展覽空間]') && !st.includes('已歸還') && st !== '已拒絕' && st !== '已刪除'; });
         if (activeExhibitions.length === 0) { container.innerHTML = '<div class="text-center py-12 text-gray-400 font-medium flex-c items-center"><i data-lucide="inbox" class="w-8 h-8 mb-2 opacity-50"></i>尚無任何檔期安排</div>'; if(window.lucide) window.lucide.createIcons(); return; }
         activeExhibitions.sort((a, b) => { const aMatch = window.getEquip(a).match(/\((.*?)\s*~/), bMatch = window.getEquip(b).match(/\((.*?)\s*~/); return (aMatch ? new Date(aMatch[1]) : new Date(window.getTime(a))) - (bMatch ? new Date(bMatch[1]) : new Date(window.getTime(b))); });
         container.innerHTML = ''; const now = new Date(); now.setHours(0,0,0,0);
+        if(activeExhibitions.length) {
+            container.innerHTML += '<div class="mb-3 text-[12px] font-black uppercase tracking-[0.22em] text-purple-500">既有展覽檔期</div>';
+        }
         activeExhibitions.forEach(item => {
             const eq = window.getEquip(item), st = window.getStatus(item), borrower = window.getBorrower(item).split(' (')[0].replace(/^\[.*?\]\s*/, ''); let exName = '未命名活動', dateRange = '未知時間', startD = now, endD = now;
             const match = eq.match(/\[展覽空間\]\s*(.*?)\s*-\s*(.*?)\s*\((.*?)\s*~\s*(.*?)\)/);
@@ -4978,6 +5161,7 @@ try {
         localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));
         localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
         localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement);
+        localStorage.setItem('exhibitionBlockedRanges',JSON.stringify(window.exhibitionBlockedRanges || []));
         if(!u.startsWith('http')){
             return true;
         }
@@ -5015,6 +5199,7 @@ try {
     
     window.loadSettingsFromCloud = async function() {
         const u=$('gas-url')?$('gas-url').value.trim():'';
+        window.exhibitionBlockedRanges = [];
         if(u.startsWith('http')) {
             try {
                 const res=await fetch(u + '?action=getSettings&t=' + Date.now());
@@ -5038,6 +5223,10 @@ try {
                         }
                         if(eqRaw.system && typeof eqRaw.system.exhibitionAnnouncement === 'string') {
                             window.exhibitionAnnouncement = eqRaw.system.exhibitionAnnouncement;
+                        }
+                        if(eqRaw.system && Array.isArray(eqRaw.system.exhibitionBlockedRanges)) {
+                            window.exhibitionBlockedRanges = eqRaw.system.exhibitionBlockedRanges;
+                            localStorage.setItem('exhibitionBlockedRanges', JSON.stringify(window.exhibitionBlockedRanges));
                         }
                         if(Array.isArray(eqRaw.items)) {
                             window.equipmentList = eqRaw.items;
@@ -5088,6 +5277,7 @@ try {
             const teacherScheduleLocal = localStorage.getItem('teacherSchedules');
             if(teacherScheduleLocal) window.teacherSchedules=JSON.parse(teacherScheduleLocal);
             window.exhibitionAnnouncement=localStorage.getItem('exhibitionAnnouncement')||'';
+            window.exhibitionBlockedRanges=JSON.parse(localStorage.getItem('exhibitionBlockedRanges')||'[]');
             const t=localStorage.getItem('teacherList');
             if(t){ let pt=JSON.parse(t); if(pt.length>0) window.teacherList=pt; }
             const eq=localStorage.getItem('customEquipmentList');
@@ -5105,7 +5295,7 @@ try {
         if ((window.classList||[]).length === 0) { window.classList = ['四漫一A', '四漫一B', '漫畫系']; }
         
         window.ensureTeacherScheduleTeacherDefaults();
-        window.initEquipmentSelect(); window.initTeacherDatalist(); window.initKeySelect(); window.initClassSelect(); window.initPeriodSelect(); window.initExhibitionSelect(); window.renderAnnouncement();
+        window.initEquipmentSelect(); window.initTeacherDatalist(); window.initKeySelect(); window.initClassSelect(); window.initPeriodSelect(); window.initExhibitionSelect(); window.renderAnnouncement(); window.renderExhibitionRestrictions();
         window.syncTeacherScheduleViews();
         if($('admin-tab').classList.contains('active') && window.currentAdminRole!=='exhibition'){ window.renderAdminEquipment(); window.renderAdminTeachers(); window.renderAdminTeacherScheduleSection(); window.renderAdminClasses(); window.renderAdminKeys(); window.renderAdminPeriods(); }
     };
@@ -5126,33 +5316,55 @@ try {
 
     window.renderTable = function(data) {
         if(!data) data = window.windowData || window.mockDatabase || [];
-        const kBody=$('table-body-keys'), eBody=$('table-body-equip'); if(!kBody||!eBody) return; kBody.innerHTML=''; eBody.innerHTML=''; let stats={all:0,pending:0,active:0,overdue:0,reserved:0};
+        const kBody=$('table-body-keys'), eBody=$('table-body-equip'); if(!kBody||!eBody) return; kBody.innerHTML=''; eBody.innerHTML=''; let stats={all:0,pending:0,active:0,overdue:0,reserved:0}; let summaryStats={all:0,pending:0,active:0,overdue:0,reserved:0}; let visibleStats={all:0,pending:0,active:0,overdue:0,reserved:0};
         let sVal=$('report-start-date')?$('report-start-date').value:'', eVal=$('report-end-date')?$('report-end-date').value:''; const today=window.getLocalDateString();
         
         let filterSVal = sVal || today;
         let filterEVal = eVal || today;
         
-        data.filter(i=>{const id=window.getId(i),bor=window.getBorrower(i),t=window.getTime(i),s=window.getStatus(i);return !(!id||!bor||bor.trim()==='()'||bor.trim()==='未填寫姓名'||!t||s==='已刪除'||(window.deletedIds && window.deletedIds.has(String(id))))}).sort((a,b)=>new Date(window.getTime(b))-new Date(window.getTime(a))).forEach(item=>{
+        data
+            .filter(i=>{const id=window.getId(i),bor=window.getBorrower(i),t=window.getTime(i),s=window.getStatus(i);return !(!id||!bor||bor.trim()==='()'||bor.trim()==='未填寫姓名'||!t||s==='已刪除'||(window.deletedIds && window.deletedIds.has(String(id))))})
+            .sort((a,b)=>{
+                const aClassroomReservation = window.isClassroomReservation(a);
+                const bClassroomReservation = window.isClassroomReservation(b);
+                if(aClassroomReservation !== bClassroomReservation) return aClassroomReservation ? -1 : 1;
+                if(aClassroomReservation && bClassroomReservation) return window.getClassroomReservationSortTime(a) - window.getClassroomReservationSortTime(b);
+                return new Date(window.getTime(b)) - new Date(window.getTime(a));
+            })
+            .forEach(item=>{
             let isUp=window.isUpcoming(item); const st=window.getStatus(item), tStr=window.getTime(item);
             let rawDate = tStr.split('T')[0].split(' ')[0].replace(/\//g,'-');
             let dParts = rawDate.split('-');
             if(dParts.length >= 3) { rawDate = dParts[0] + '-' + dParts[1].padStart(2,'0') + '-' + dParts[2].padStart(2,'0'); }
             let inRange=true; if(filterSVal&&rawDate<filterSVal)inRange=false; if(filterEVal&&rawDate>filterEVal)inRange=false;
+
+            summaryStats.all++;
+            if(window.isPendingReviewStatus(item)) summaryStats.pending++;
+            else if(window.isClassroomReservation(item)) summaryStats.reserved++;
+            else if(st.startsWith('借用中') && !isUp && !st.includes('預約')) summaryStats.active++;
+            if(window.checkIsOverdue(item)) summaryStats.overdue++;
             
-            if(inRange) { stats.all++; }
-            if(window.isPendingReviewStatus(item)) stats.pending++; 
-            else if(st.includes('預約') || isUp) stats.reserved++; 
-            else if(st.startsWith('借用中')) stats.active++; 
-            
-            if(window.checkIsOverdue(item)) stats.overdue++;
+            if(inRange) {
+                stats.all++;
+                if(window.isPendingReviewStatus(item)) stats.pending++; 
+                else if(window.isClassroomReservation(item)) stats.reserved++; 
+                else if(st.startsWith('借用中') && !isUp && !st.includes('預約')) stats.active++; 
+                if(window.checkIsOverdue(item)) stats.overdue++;
+            }
 
             if(window.currentReportFilter!=='all'){ 
                 if(window.currentReportFilter==='pending'&&!window.isPendingReviewStatus(item))return; 
                 if(window.currentReportFilter==='active'&&(!st.startsWith('借用中') || st.includes('預約') || isUp))return; 
                 if(window.currentReportFilter==='overdue'&&!window.checkIsOverdue(item))return; 
                 if(window.currentReportFilter==='abnormal'&&!st.includes('(異常:'))return; 
-                if(window.currentReportFilter==='reserved'&&!(st.includes('預約') || isUp))return; 
+                if(window.currentReportFilter==='reserved'&&!window.isClassroomReservation(item))return; 
             } else if(!inRange) return;
+
+            visibleStats.all++;
+            if(window.isPendingReviewStatus(item)) visibleStats.pending++;
+            else if(window.isClassroomReservation(item)) visibleStats.reserved++;
+            else if(st.startsWith('借用中') && !isUp && !st.includes('預約')) visibleStats.active++;
+            if(window.checkIsOverdue(item)) visibleStats.overdue++;
             
             let act=''; const rT=window.getRetTime(item); 
             if(window.isTeacherApprovalWaiting(item)) act='<div class="flex flex-col gap-1.5 w-28 ml-auto"><button onclick="window.openClassroomApprovalQrById(\'' + window.getId(item) + '\')" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 px-2 py-1.5 rounded-lg text-xs font-bold w-full transition-colors">重新顯示 QR</button><button onclick="window.copyClassroomApprovalLinkById(\'' + window.getId(item) + '\')" class="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 px-2 py-1.5 rounded-lg text-xs font-bold w-full transition-colors">複製連結</button></div>';
@@ -5167,7 +5379,8 @@ try {
             const tr='<tr class="hover:bg-gray-50 transition-colors"><td class="td">' + window.getStatusBadge(item) + '</td><td class="td">' + window.formatBorrowerCell(window.getBorrower(item),window.getId(item)) + '</td><td class="td">' + window.formatEquipmentCell(window.getEquip(item),window.getQty(item)) + '</td><td class="td">' + timeHtml + '</td><td class="td">' + expDate + '</td><td class="td text-right">' + act + '</td></tr>';
             if(window.getEquip(item)&&(window.getEquip(item).includes('[鑰匙]')||window.getEquip(item).includes('[預借教室]')||window.getEquip(item).includes('[展覽空間]')))kBody.innerHTML+=tr;else eBody.innerHTML+=tr;
         });
-        if($('count-all')){ $('count-all').innerText=stats.all; $('count-pending').innerText=stats.pending; $('count-active').innerText=stats.active; $('count-overdue').innerText=stats.overdue; if($('count-reserved'))$('count-reserved').innerText=stats.reserved; }
+        const displayStats = { ...summaryStats };
+        if($('count-all')){ $('count-all').innerText=stats.all; $('count-pending').innerText=displayStats.pending; $('count-active').innerText=displayStats.active; $('count-overdue').innerText=displayStats.overdue; if($('count-reserved'))$('count-reserved').innerText=displayStats.reserved; }
         if($('filter-card-all-title')){ if(filterSVal===today&&filterEVal===today)$('filter-card-all-title').innerText='今日紀錄'; else if(!sVal && !eVal) $('filter-card-all-title').innerText='今日紀錄'; else $('filter-card-all-title').innerText='全部歷史紀錄'; }
     };
 
@@ -5693,10 +5906,14 @@ try {
         const endDate = $('edit-exhibition-end').value;
         const spaceName = window.editingExhibitionOriginalSpace || window.parseExhibitionEquipment(window.getEquip(target)).space;
         const currentStatus = window.getStatus(target);
+        const originalEquipment = window.parseExhibitionEquipment(window.getEquip(target));
 
         if(!exhibitionName || !borrowerInput || !startDate || !endDate) return window.showToast('請填寫完整', 'error');
         if(!spaceName) return window.showToast('找不到展覽空間', 'error');
         if(startDate > endDate) return window.showToast('結束日期錯誤', 'error');
+        const blockedRange = window.findExhibitionBlockedRangeConflict(startDate, endDate);
+        const dateChanged = startDate !== String(originalEquipment.start || '') || endDate !== String(originalEquipment.end || '');
+        if(blockedRange && dateChanged) return window.showToast(window.getExhibitionBlockedRangeMessage(blockedRange), 'error');
         if(window.checkExhibitionConflict(spaceName, startDate, endDate, id)) return window.showToast('該時段已有其他展覽或活動安排！', 'error');
 
         const normalizedBorrower = window.normalizeBorrowerInput(borrowerInput, window.editingExhibitionBorrowerUnit || '');
@@ -5758,7 +5975,7 @@ try {
             if(type==='key') { eq='[鑰匙] ' + $('equipment-key').value; if($('need-remote-key')?.checked) eq+=' (+遙控器)'; if($('need-doccam-key')?.checked) eq+=' (+投影機)'; if($('need-drawingpen-key')?.checked) eq+=' (+電繪筆 x' + ($('drawingpen-qty').value||1) + ')'; if($('need-airbrush-key')?.checked) eq+=' (+噴筆槍 x' + ($('airbrush-qty').value||1) + ' [' + Array.from($$('.airbrush-id-select')).map(x=>x.value).filter(v=>v).join(',') + '])'; if($('need-tabletpen-key')?.checked) eq+=' (+平板筆 x' + ($('tabletpen-qty').value||1) + ')'; } 
             else if(type==='eq') { let m='', a=''; e.target.querySelectorAll('.equip-borrow-item').forEach((it,idx)=>{ const s=it.querySelector('.eq-select').value, q=it.querySelector('.eq-qty').value; if(!s)return; if(idx===0){m=s;qty=q;}else{a+=' (+' + s + ' x' + q + ')';} }); if(!m){ window.showToast('請選擇設備','error'); if(btn)btn.disabled=false; return; } eq=m+a; } 
             else if(type==='classroom') { const eqVal=$('equipment-classroom')?$('equipment-classroom').value:'未知', dVal=$('reserve-date-classroom')?$('reserve-date-classroom').value:''; const sP=(window.periodList||[]).find(p=>p.id===($('reserve-period-start-classroom')?$('reserve-period-start-classroom').value:'')), eP=(window.periodList||[]).find(p=>p.id===($('reserve-period-end-classroom')?$('reserve-period-end-classroom').value:'')); if(!sP||!eP){ window.showToast('選擇完整節次','error'); if(btn)btn.disabled=false; return; } if(sP.start>=eP.end){ window.showToast('節次錯誤','error'); if(btn)btn.disabled=false; return; } if(window.checkScheduleConflict(eqVal,dVal,sP.start,eP.end)){ window.showToast('該時段教室已有排定課程！','error'); if(btn)btn.disabled=false; return; } eq='[預借教室] ' + eqVal + ' (' + dVal + ' ' + sP.start + '~' + eP.end + ')'; } 
-            else if(type==='exhibition') { const spVal=$('equipment-exhibition')?$('equipment-exhibition').value:'未知', stVal=$('reserve-start-exhibition')?$('reserve-start-exhibition').value:'', enVal=$('reserve-end-exhibition')?$('reserve-end-exhibition').value:''; if(stVal>enVal){ window.showToast('結束日期錯誤','error'); if(btn)btn.disabled=false; return; } if(window.checkExhibitionConflict(spVal,stVal,enVal)){ window.showToast('該時段已有其他展覽或活動安排！','error'); if(btn)btn.disabled=false; return; } eq='[展覽空間] ' + spVal + ' - ' + ($('exhibition-name')?$('exhibition-name').value.trim():'活動') + ' (' + stVal + ' ~ ' + enVal + ')'; }
+            else if(type==='exhibition') { const spVal=$('equipment-exhibition')?$('equipment-exhibition').value:'未知', stVal=$('reserve-start-exhibition')?$('reserve-start-exhibition').value:'', enVal=$('reserve-end-exhibition')?$('reserve-end-exhibition').value:''; if(stVal>enVal){ window.showToast('結束日期錯誤','error'); if(btn)btn.disabled=false; return; } const blockedRange=window.findExhibitionBlockedRangeConflict(stVal,enVal); if(blockedRange){ window.showToast(window.getExhibitionBlockedRangeMessage(blockedRange),'error'); if(btn)btn.disabled=false; return; } if(window.checkExhibitionConflict(spVal,stVal,enVal)){ window.showToast('該時段已有其他展覽或活動安排！','error'); if(btn)btn.disabled=false; return; } eq='[展覽空間] ' + spVal + ' - ' + ($('exhibition-name')?$('exhibition-name').value.trim():'活動') + ' (' + stVal + ' ~ ' + enVal + ')'; }
             
             let exDtN=null; if(type==='exhibition') exDtN=$('reserve-end-exhibition'); else if(type==='classroom') exDtN=$('reserve-date-classroom'); else exDtN=$(`expectedReturnDate-${type}`);
             const requestRef = window.makeBorrowRequestRef('req');
