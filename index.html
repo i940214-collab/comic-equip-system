@@ -2131,6 +2131,7 @@ try {
     window.teacherScheduleGeminiApiKey = window.teacherScheduleGeminiApiKey || '';
     window.teacherScheduleAiState = window.teacherScheduleAiState || { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
     window.teacherScheduleTemplateDayMap = window.teacherScheduleTemplateDayMap || [null, 5, 4, 3, 2, 1];
+    window.teacherScheduleSettingsChunkSize = window.teacherScheduleSettingsChunkSize || 30000;
     window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
     window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
     window.loadingOverlayDepth = window.loadingOverlayDepth || 0;
@@ -2176,6 +2177,46 @@ try {
     window.getRetTime = i => i?.returningTime || i?.歸還時間 || ''; 
     window.getQty = i => i?.quantity || i?.數量 || 1;
     window.getRequestRef = i => i?.requestRef || i?.申請參照 || '';
+    window.buildTeacherScheduleSettingsPayload = function() {
+        const raw = JSON.stringify(window.teacherSchedules || []);
+        const chunkSize = Math.max(Number(window.teacherScheduleSettingsChunkSize) || 30000, 12000);
+        if(raw.length <= chunkSize) {
+            return [{ category:'__SYSTEM_SETTINGS__', name:'TEACHER_SCHEDULES', propertyNo:raw, location:'SYSTEM' }];
+        }
+        const chunks = [];
+        const total = Math.ceil(raw.length / chunkSize);
+        for(let index = 0; index < total; index += 1) {
+            chunks.push({
+                category:'__SYSTEM_SETTINGS__',
+                name:'TEACHER_SCHEDULES__PART__' + String(index + 1).padStart(3, '0'),
+                propertyNo: raw.slice(index * chunkSize, (index + 1) * chunkSize),
+                location:'SYSTEM'
+            });
+        }
+        chunks.push({
+            category:'__SYSTEM_SETTINGS__',
+            name:'TEACHER_SCHEDULES_META',
+            propertyNo: JSON.stringify({ version: 2, total }),
+            location:'SYSTEM'
+        });
+        return chunks;
+    };
+    window.readTeacherScheduleSettingsFromEquipment = function(eqRaw) {
+        const settings = Array.isArray(eqRaw) ? eqRaw : [];
+        const partEntries = settings
+            .filter(entry => /^TEACHER_SCHEDULES__PART__\d+$/.test(String(entry && entry.name || '')))
+            .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        if(partEntries.length) {
+            const joined = partEntries.map(entry => String(entry.propertyNo || '')).join('');
+            if(!joined) return [];
+            const parsed = JSON.parse(joined);
+            return Array.isArray(parsed) ? parsed : [];
+        }
+        const single = settings.find(entry => entry && entry.name === 'TEACHER_SCHEDULES');
+        if(!single) return [];
+        const parsedSingle = typeof single.propertyNo === 'string' ? JSON.parse(single.propertyNo) : single.propertyNo;
+        return Array.isArray(parsedSingle) ? parsedSingle : [];
+    };
     window.extractTeacherApprovalNameFromStatus = function(statusText) {
         const match = String(statusText || '').match(/教師同意:\s*([^()]+)/);
         return match ? match[1].trim() : '';
@@ -4797,7 +4838,7 @@ try {
             const payload=[...window.equipmentList];
             payload.push({category:'__SYSTEM_SETTINGS__',name:'PERIODS',propertyNo:JSON.stringify(window.periodList),location:'SYSTEM'});
             payload.push({category:'__SYSTEM_SETTINGS__',name:'ROOM_SCHEDULES',propertyNo:JSON.stringify(window.roomSchedules),location:'SYSTEM'});
-            payload.push({category:'__SYSTEM_SETTINGS__',name:'TEACHER_SCHEDULES',propertyNo:JSON.stringify(window.teacherSchedules),location:'SYSTEM'});
+            payload.push(...window.buildTeacherScheduleSettingsPayload());
             payload.push({category:'__SYSTEM_SETTINGS__',name:'EXHIBITION_ANNOUNCEMENT',propertyNo:window.exhibitionAnnouncement,location:'SYSTEM'});
             const res=await fetch(u, {method:'POST',body:JSON.stringify({action:'saveSettings',equipment:JSON.stringify(payload),teachers:JSON.stringify(window.teacherList),keys:JSON.stringify(window.keyList),classes:JSON.stringify(window.classList)}),headers:{'Content-Type':'text/plain;charset=utf-8'}});
             return (await res.json()).status==='success';
@@ -4817,8 +4858,13 @@ try {
                         if(pS){try{window.periodList=typeof pS.propertyNo==='string'?JSON.parse(pS.propertyNo):pS.propertyNo;}catch(e){}}
                         const sS=eqRaw.find(e=>e.name==='ROOM_SCHEDULES');
                         if(sS){try{window.roomSchedules=typeof sS.propertyNo==='string'?JSON.parse(sS.propertyNo):sS.propertyNo;localStorage.setItem('roomSchedules',JSON.stringify(window.roomSchedules));}catch(e){}}
-                        const tsS=eqRaw.find(e=>e.name==='TEACHER_SCHEDULES');
-                        if(tsS){try{window.teacherSchedules=typeof tsS.propertyNo==='string'?JSON.parse(tsS.propertyNo):tsS.propertyNo;localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));}catch(e){}}
+                        try{
+                            const loadedTeacherSchedules = window.readTeacherScheduleSettingsFromEquipment(eqRaw);
+                            if(Array.isArray(loadedTeacherSchedules) && loadedTeacherSchedules.length >= 0){
+                                window.teacherSchedules = loadedTeacherSchedules;
+                                localStorage.setItem('teacherSchedules',JSON.stringify(window.teacherSchedules));
+                            }
+                        }catch(e){}
                         const annS=eqRaw.find(e=>e.name==='EXHIBITION_ANNOUNCEMENT');
                         if(annS){window.exhibitionAnnouncement=annS.propertyNo||'';}
                         window.equipmentList=eqRaw.filter(e=>e.category!=='__SYSTEM_SETTINGS__');
