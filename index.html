@@ -4331,10 +4331,16 @@ try {
             body.innerHTML = '<div class="mx-auto max-w-[42rem]"><div class="teacher-approval-badge"><i data-lucide="scan-line" class="w-4 h-4"></i> Teacher Approval</div><div class="mt-5 teacher-approval-notice">正在載入借用資料，請稍候，我們正在同步這筆教室借用申請。</div></div>';
         }
         show('teacher-classroom-approval-modal');
-        const record = window.findRecordById(approvalId) || await (async () => {
-            await window.fetchData(true);
-            return window.findRecordById(approvalId);
-        })();
+        if(window.lucide) window.lucide.createIcons();
+        let record = window.findRecordById(approvalId);
+        if(!record) {
+            try {
+                await window.fetchData(true);
+                record = window.findRecordById(approvalId);
+            } catch(err) {
+                console.error('Teacher approval route fetch failed:', err);
+            }
+        }
         window.renderTeacherClassroomApprovalModal(record);
     };
 
@@ -5482,17 +5488,29 @@ try {
     };
 
     window.init = function() { 
+        const approvalRouteId = window.getClassroomApprovalIdFromUrl();
         window.syncClassroomApprovalRouteMode();
+        if(approvalRouteId) {
+            window.handleTeacherClassroomApprovalRoute();
+        }
         const t = window.getLocalDateString(); window.lastKnownDateStr = t; 
         if($('report-start-date')) $('report-start-date').value = t; 
         if($('report-end-date')) $('report-end-date').value = t;
         window.applyBorrowDefaultDates(true);
-        window.loadSettingsFromCloud().then(async () => {
-            await window.fetchData();
-            if(window.getClassroomApprovalIdFromUrl()) {
-                window.handleTeacherClassroomApprovalRoute();
-            }
-        });
+        window.loadSettingsFromCloud()
+            .catch(err => {
+                console.error('loadSettingsFromCloud failed:', err);
+            })
+            .then(async () => {
+                try {
+                    await window.fetchData();
+                } catch(err) {
+                    console.error('fetchData failed during init:', err);
+                }
+                if(approvalRouteId) {
+                    window.handleTeacherClassroomApprovalRoute();
+                }
+            });
         window.updateDateTimeDisplay(); setInterval(window.updateDateTimeDisplay, 1000);
         window.startAutoRefresh(); 
         const rc = $('exhibition-recommendations'); if(rc) { rc.innerHTML = '<div class="flex-r gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> 請先選擇空間查看推薦</div>'; }
