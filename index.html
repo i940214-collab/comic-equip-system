@@ -1736,6 +1736,62 @@ body::before {
     <div id="confirm-modal" class="mod-w hidden"><div class="bg-white p-6 rounded-3xl w-80 shadow-2xl text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-50 text-red-500 mb-3"><i data-lucide="trash-2"></i></div><h3 id="confirm-modal-title" class="font-bold text-lg mb-2">確認</h3><p id="confirm-modal-message" class="text-sm text-gray-500 mb-6"></p><div class="flex-r justify-center gap-3"><button onclick="window.closeConfirmModal()" class="btn btn-g px-4 py-2">取消</button><button id="btn-confirm-action" onclick="window.handleConfirmAction()" class="btn btn-r text-white bg-red-600 hover:bg-red-700 px-4 py-2 shadow-md">確定</button></div></div></div>
     
     <div id="approve-modal" class="mod-w hidden"><div class="bg-white p-8 rounded-3xl w-80 shadow-2xl text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 text-green-600 mb-3"><i data-lucide="shield-check" class="w-6 h-6"></i></div><h3 class="font-black mb-4 text-green-700 text-xl">審核核准</h3><input type="text" id="approve-admin-name" class="inp text-center mb-6 bg-gray-50 focus:ring-green-500" placeholder="請輸入管理員姓名" onkeydown="if(event.key==='Enter') window.confirmApprove()"><div class="flex-r justify-center gap-3"><button onclick="hide('approve-modal')" class="btn btn-g px-5 py-2.5">取消</button><button onclick="window.confirmApprove()" class="btn btn-gr bg-green-600 text-white hover:bg-green-700 px-6 py-2.5 shadow-md">核准借用</button></div></div></div>
+
+    <div id="classroom-approval-qr-modal" class="mod-w hidden">
+        <div class="w-full max-w-4xl rounded-[2rem] border border-sky-100 bg-white p-6 shadow-2xl text-gray-800 md:p-8">
+            <div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div class="min-w-0">
+                    <div class="section-tag mb-3"><i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Teacher Approval QR</div>
+                    <h3 class="text-[1.45rem] font-black text-slate-900 md:text-[1.75rem]">請將這個 QR code 傳給負責老師確認</h3>
+                    <p class="mt-2 text-sm font-medium leading-7 text-slate-500">老師掃描後即可直接回覆是否同意該學生借用教室，回覆完成後會自動同步更新這筆申請。</p>
+                </div>
+                <button type="button" onclick="window.closeClassroomApprovalQrModal()" class="room-detail-close shrink-0" aria-label="關閉教室借用 QR 視窗">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div class="rounded-[1.6rem] border border-slate-200 bg-slate-50/80 p-5">
+                    <div class="text-sm font-black uppercase tracking-[0.22em] text-sky-600">借用摘要</div>
+                    <div id="classroom-approval-qr-summary" class="mt-4 space-y-3 text-sm font-medium text-slate-700"></div>
+                    <div id="classroom-approval-qr-hint" class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 hidden"></div>
+                    <div class="mt-5">
+                        <label class="lbl text-slate-600">老師確認連結</label>
+                        <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+                            <input type="text" id="classroom-approval-link" readonly class="inp font-mono text-[13px] bg-white">
+                            <button type="button" onclick="window.copyClassroomApprovalLink()" class="btn btn-b px-5 py-3 shadow-md whitespace-nowrap"><i data-lucide="copy" class="w-4 h-4"></i> 複製連結</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-[1.6rem] border border-sky-100 bg-[linear-gradient(180deg,rgba(239,246,255,0.88),rgba(255,255,255,0.98))] p-5 text-center shadow-sm">
+                    <div id="classroom-approval-qr-image-shell" class="mx-auto flex h-[280px] w-[280px] items-center justify-center overflow-hidden rounded-[1.5rem] border border-white bg-white p-4 shadow-[0_14px_36px_rgba(37,99,235,0.12)]">
+                        <img id="classroom-approval-qr-image" alt="教室借用老師確認 QR code" class="h-full w-full object-contain hidden">
+                        <div id="classroom-approval-qr-placeholder" class="text-sm font-bold leading-7 text-slate-400">等待建立 QR code</div>
+                    </div>
+                    <p class="mt-4 text-sm font-medium leading-7 text-slate-500">建議學生直接截圖或開啟手機拍照傳送，老師掃描後就能完成回覆。</p>
+                </div>
+            </div>
+            <div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                <button type="button" onclick="window.closeClassroomApprovalQrModal()" class="btn btn-g px-5 py-3">稍後處理</button>
+                <button type="button" onclick="window.switchTab('report-tab'); window.closeClassroomApprovalQrModal();" class="btn btn-b px-5 py-3 shadow-md"><i data-lucide="list-collapse" class="w-4 h-4"></i> 查看報表</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="teacher-classroom-approval-modal" class="mod-w hidden">
+        <div class="w-full max-w-3xl rounded-[2rem] border border-sky-100 bg-white p-6 shadow-2xl text-gray-800 md:p-8">
+            <div class="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div class="min-w-0">
+                    <div class="section-tag mb-3"><i data-lucide="scan-line" class="w-3.5 h-3.5"></i> Classroom Approval</div>
+                    <h3 class="text-[1.45rem] font-black text-slate-900 md:text-[1.75rem]">教室借用確認</h3>
+                    <p class="mt-2 text-sm font-medium leading-7 text-slate-500">請確認學生申請內容後，再回覆是否同意借用教室。</p>
+                </div>
+                <button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="room-detail-close shrink-0" aria-label="關閉老師教室借用確認視窗">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="teacher-classroom-approval-body" class="mt-6"></div>
+        </div>
+    </div>
     
     <div id="teacher-self-edit-modal" class="mod-w hidden"><div class="bg-white p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-gray-800"><div class="flex-r gap-3 mb-6 border-b pb-4"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600"><i data-lucide="user-cog" class="w-6 h-6"></i></div><h3 class="font-black text-xl text-blue-900">個人資料維護</h3></div><div class="space-y-4 mb-6"><div><label class="lbl">教師姓名 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-name" oninput="window.autofillSelfData()" class="inp" placeholder="請輸入姓名 (例如：王大明)"></div><div><label class="lbl">教師職號 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-emp-id" oninput="window.autofillSelfData()" class="inp font-mono" placeholder="請輸入職號"></div><div><label class="lbl">教師職位 <span class="text-red-500">*</span></label><select id="self-teacher-position" class="inp font-bold text-gray-700"><option value="專任">專任</option><option value="兼任">兼任</option><option value="其他">其他</option></select></div><div><label class="lbl">聯絡電話 <span class="text-red-500">*</span></label><input type="text" id="self-teacher-phone" class="inp font-mono" placeholder="09XX-XXX-XXX"></div><div><label class="lbl">Email <span class="text-red-500">*</span></label><input type="email" id="self-teacher-email" class="inp" placeholder="example@school.edu.tw"></div></div><div class="flex-r gap-3"><button onclick="hide('teacher-self-edit-modal')" class="btn btn-g flex-1 py-3">取消</button><button onclick="window.saveTeacherSelf()" class="btn btn-b flex-1 py-3 shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存</button></div></div></div>
 
@@ -1804,6 +1860,8 @@ body::before {
     window.teacherScheduleGeminiApiKey = window.teacherScheduleGeminiApiKey || '';
     window.teacherScheduleAiState = window.teacherScheduleAiState || { isProcessing: false, progress: '', errorMsg: '', successMsg: '', parsedDataList: [] };
     window.teacherScheduleTemplateDayMap = window.teacherScheduleTemplateDayMap || [null, 5, 4, 3, 2, 1];
+    window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
+    window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
     
     window.currentEquipPage = window.currentEquipPage || 1; 
     window.equipSearchTerm = window.equipSearchTerm || ''; 
@@ -1845,6 +1903,7 @@ body::before {
     window.getExpDate = i => i?.expectedReturnDate || i?.預計歸還日期 || ''; 
     window.getRetTime = i => i?.returningTime || i?.歸還時間 || ''; 
     window.getQty = i => i?.quantity || i?.數量 || 1;
+    window.getRequestRef = i => i?.requestRef || i?.申請參照 || '';
 
     // --- 核心格式化 ---
     window.getLocalDateString = function() { 
@@ -3749,6 +3808,250 @@ body::before {
         };
     };
 
+    window.makeBorrowRequestRef = function(prefix = 'borrow') {
+        const randomPart = Math.random().toString(36).slice(2, 10);
+        if(window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return prefix + '-' + window.crypto.randomUUID();
+        }
+        return prefix + '-' + Date.now() + '-' + randomPart;
+    };
+
+    window.isTeacherApprovalClassroomRequest = function(item) {
+        const eq = window.getEquip(item);
+        if(!eq || !eq.includes('[預借教室]')) return false;
+        const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(item));
+        return !!borrowerMeta.responsible;
+    };
+
+    window.buildClassroomApprovalLink = function(recordId) {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('classroomApproval');
+            url.searchParams.set('classroomApproval', recordId);
+            return url.toString();
+        } catch(err) {
+            return '';
+        }
+    };
+
+    window.clearClassroomApprovalQuery = function() {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('classroomApproval');
+            window.history.replaceState({}, '', url.toString());
+        } catch(err) {}
+    };
+
+    window.getClassroomApprovalIdFromUrl = function() {
+        try {
+            return new URL(window.location.href).searchParams.get('classroomApproval') || '';
+        } catch(err) {
+            return '';
+        }
+    };
+
+    window.getClassroomApprovalQrImageUrl = function(link) {
+        if(!link) return '';
+        return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&format=png&data=' + encodeURIComponent(link);
+    };
+
+    window.sleep = function(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    };
+
+    window.findBorrowRecordBySignature = function(signature) {
+        const data = window.windowData || window.mockDatabase || [];
+        if(!signature) return null;
+        const refMatch = data.find(item => window.getRequestRef(item) && window.getRequestRef(item) === signature.requestRef);
+        if(refMatch) return refMatch;
+        const exactMatch = data.find(item => (
+            window.getBorrower(item) === signature.borrower &&
+            window.getEquip(item) === signature.equipment &&
+            window.getExpDate(item) === signature.expectedReturnDate &&
+            window.getTime(item) === signature.time
+        ));
+        if(exactMatch) return exactMatch;
+        return data.find(item => (
+            window.getBorrower(item) === signature.borrower &&
+            window.getEquip(item) === signature.equipment &&
+            window.getExpDate(item) === signature.expectedReturnDate
+        )) || null;
+    };
+
+    window.waitForBorrowRecord = async function(signature, attempts = 4) {
+        for(let index = 0; index < attempts; index += 1) {
+            if(index > 0) await window.sleep(650);
+            await window.fetchData(true);
+            const match = window.findBorrowRecordBySignature(signature);
+            if(match) return match;
+        }
+        return window.findBorrowRecordBySignature(signature);
+    };
+
+    window.closeClassroomApprovalQrModal = function() {
+        hide('classroom-approval-qr-modal');
+    };
+
+    window.copyClassroomApprovalLink = async function() {
+        const link = window.currentClassroomApprovalLink || ($('classroom-approval-link') ? $('classroom-approval-link').value.trim() : '');
+        if(!link) return window.showToast('目前沒有可複製的連結', 'error');
+        try {
+            await navigator.clipboard.writeText(link);
+            window.showToast('老師確認連結已複製');
+        } catch(err) {
+            if($('classroom-approval-link')) {
+                $('classroom-approval-link').focus();
+                $('classroom-approval-link').select();
+            }
+            window.showToast('已選取連結，可直接複製');
+        }
+    };
+
+    window.openClassroomApprovalQrModal = function(record) {
+        if(!record) return;
+        const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(record));
+        const classroomMeta = window.parseClassroomReservation(window.getEquip(record));
+        const recordId = String(window.getId(record) || '');
+        const summaryNode = $('classroom-approval-qr-summary');
+        const linkNode = $('classroom-approval-link');
+        const qrImage = $('classroom-approval-qr-image');
+        const qrPlaceholder = $('classroom-approval-qr-placeholder');
+        const hintNode = $('classroom-approval-qr-hint');
+        const shareable = /^https?:$/i.test(window.location.protocol);
+        const approvalLink = window.buildClassroomApprovalLink(recordId);
+
+        window.currentClassroomApprovalRecordId = recordId;
+        window.currentClassroomApprovalLink = approvalLink;
+
+        if(summaryNode) {
+            summaryNode.innerHTML =
+                '<div class="grid gap-3 md:grid-cols-2">' +
+                    '<div class="rounded-2xl border border-white bg-white px-4 py-3"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">學生 / 單位</div><div class="mt-2 text-[1rem] font-black text-slate-900">' + window.escapeHtml((borrowerMeta.unit ? borrowerMeta.unit + ' - ' : '') + (borrowerMeta.borrower || '未填寫')) + '</div></div>' +
+                    '<div class="rounded-2xl border border-white bg-white px-4 py-3"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">負責老師</div><div class="mt-2 text-[1rem] font-black text-slate-900">' + window.escapeHtml(borrowerMeta.responsible || '未指定') + '</div></div>' +
+                    '<div class="rounded-2xl border border-white bg-white px-4 py-3"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">教室</div><div class="mt-2 text-[1rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.room || '未指定') + '</div></div>' +
+                    '<div class="rounded-2xl border border-white bg-white px-4 py-3"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">日期 / 節次時間</div><div class="mt-2 text-[1rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.date ? classroomMeta.date.replace(/-/g, '/') : '未指定') + '</div><div class="mt-1 text-sm font-bold text-slate-500">' + window.escapeHtml(classroomMeta.start && classroomMeta.end ? (classroomMeta.start + ' - ' + classroomMeta.end) : '時間未設定') + '</div></div>' +
+                '</div>';
+        }
+        if(linkNode) linkNode.value = approvalLink;
+        if(hintNode) {
+            if(shareable) {
+                hintNode.classList.add('hidden');
+                hintNode.textContent = '';
+            } else {
+                hintNode.classList.remove('hidden');
+                hintNode.textContent = '目前已先產出本機連結與 QR code；但若要讓老師直接用手機掃描開啟，仍需把系統部署在可連線的 http/https 網址上。';
+            }
+        }
+        if(qrImage && qrPlaceholder) {
+            if(approvalLink) {
+                qrImage.src = window.getClassroomApprovalQrImageUrl(approvalLink);
+                qrImage.classList.remove('hidden');
+                qrPlaceholder.classList.add('hidden');
+            } else {
+                qrImage.removeAttribute('src');
+                qrImage.classList.add('hidden');
+                qrPlaceholder.classList.remove('hidden');
+                qrPlaceholder.textContent = '目前無法建立可分享的 QR code';
+            }
+        }
+        show('classroom-approval-qr-modal');
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.findRecordById = function(recordId) {
+        return (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(recordId)) || null;
+    };
+
+    window.closeTeacherClassroomApprovalModal = function() {
+        hide('teacher-classroom-approval-modal');
+        window.clearClassroomApprovalQuery();
+    };
+
+    window.renderTeacherClassroomApprovalModal = function(record) {
+        const body = $('teacher-classroom-approval-body');
+        if(!body) return;
+        if(!record) {
+            body.innerHTML =
+                '<div class="rounded-[1.6rem] border border-red-100 bg-red-50 px-5 py-6 text-center text-red-700">' +
+                    '<div class="text-lg font-black">找不到這筆教室借用申請</div>' +
+                    '<p class="mt-2 text-sm font-medium leading-7">可能是連結已過期、資料尚未同步，或申請已被刪除。</p>' +
+                '</div>' +
+                '<div class="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center"><button type="button" onclick="window.handleTeacherClassroomApprovalRoute()" class="btn btn-b px-5 py-3 shadow-md"><i data-lucide="refresh-cw" class="w-4 h-4"></i> 重新載入</button><button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="btn btn-g px-5 py-3">關閉</button></div>';
+            if(window.lucide) window.lucide.createIcons();
+            return;
+        }
+
+        const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(record));
+        const classroomMeta = window.parseClassroomReservation(window.getEquip(record));
+        const status = window.getStatus(record);
+        const isPending = status === '待審核';
+        const suggestedTeacherName = borrowerMeta.responsible || '';
+
+        let stateHtml = '';
+        if(!window.isTeacherApprovalClassroomRequest(record)) {
+            stateHtml = '<div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">這筆申請沒有設定負責老師，因此不適用 QR 老師確認流程。</div>';
+        } else if(status === '已拒絕') {
+            stateHtml = '<div class="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">這筆教室借用申請已被回覆為不同意。</div>';
+        } else if(status.startsWith('借用中')) {
+            stateHtml = '<div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">這筆教室借用申請已完成老師確認，系統狀態已同步更新。</div>';
+        } else {
+            stateHtml = '<div class="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-700">請確認是否同意該學生在以下時段借用教室。</div>';
+        }
+
+        body.innerHTML =
+            stateHtml +
+            '<div class="mt-5 grid gap-4 md:grid-cols-2">' +
+                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">學生 / 單位</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml((borrowerMeta.unit ? borrowerMeta.unit + ' - ' : '') + (borrowerMeta.borrower || '未填寫')) + '</div></div>' +
+                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">負責老師</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(borrowerMeta.responsible || '未指定') + '</div></div>' +
+                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">借用教室</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.room || '未指定') + '</div></div>' +
+                '<div class="rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4"><div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">借用日期 / 時段</div><div class="mt-2 text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(classroomMeta.date ? classroomMeta.date.replace(/-/g, '/') : '未指定') + '</div><div class="mt-1 text-sm font-bold text-slate-500">' + window.escapeHtml(classroomMeta.start && classroomMeta.end ? (classroomMeta.start + ' - ' + classroomMeta.end) : '時間未設定') + '</div></div>' +
+            '</div>' +
+            '<div class="mt-5 rounded-[1.4rem] border border-slate-200 bg-white p-4">' +
+                '<label class="lbl text-slate-600">回覆教師姓名</label>' +
+                '<input type="text" id="teacher-classroom-approval-name" class="inp mt-2" value="' + window.escapeHtml(suggestedTeacherName) + '" placeholder="請輸入老師姓名">' +
+                '<p class="mt-2 text-xs font-medium text-slate-400">送出後將直接更新原申請狀態。</p>' +
+            '</div>' +
+            '<div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">' +
+                '<button type="button" onclick="window.closeTeacherClassroomApprovalModal()" class="btn btn-g px-5 py-3">關閉</button>' +
+                (isPending && window.isTeacherApprovalClassroomRequest(record)
+                    ? '<button type="button" onclick="window.submitTeacherClassroomApproval(\'reject\')" class="btn bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-5 py-3 shadow-none">不同意借用</button><button type="button" onclick="window.submitTeacherClassroomApproval(\'approve\')" class="btn bg-emerald-600 text-white hover:bg-emerald-700 px-5 py-3 shadow-md"><i data-lucide="shield-check" class="w-4 h-4"></i> 同意借用</button>'
+                    : ''
+                ) +
+            '</div>';
+
+        show('teacher-classroom-approval-modal');
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.handleTeacherClassroomApprovalRoute = async function() {
+        const approvalId = window.getClassroomApprovalIdFromUrl();
+        if(!approvalId) return;
+        const body = $('teacher-classroom-approval-body');
+        if(body) {
+            body.innerHTML = '<div class="rounded-[1.6rem] border border-sky-100 bg-sky-50 px-5 py-8 text-center text-sky-700"><div class="text-lg font-black">正在載入借用資料</div><p class="mt-2 text-sm font-medium leading-7">請稍候，我們正在同步這筆教室借用申請。</p></div>';
+        }
+        show('teacher-classroom-approval-modal');
+        const record = window.findRecordById(approvalId) || await (async () => {
+            await window.fetchData(true);
+            return window.findRecordById(approvalId);
+        })();
+        window.renderTeacherClassroomApprovalModal(record);
+    };
+
+    window.submitTeacherClassroomApproval = async function(decision) {
+        const approvalId = window.getClassroomApprovalIdFromUrl();
+        const record = window.findRecordById(approvalId);
+        if(!record) return window.showToast('找不到要更新的借用申請', 'error');
+        const teacherName = $('teacher-classroom-approval-name') ? $('teacher-classroom-approval-name').value.trim() : '';
+        if(!teacherName) return window.showToast('請填寫回覆教師姓名', 'error');
+        const nextStatus = decision === 'approve' ? ('借用中 (教師同意: ' + teacherName + ')') : '已拒絕';
+        await window.executeReturn(approvalId, nextStatus);
+        await window.sleep(700);
+        await window.fetchData(true);
+        const latestRecord = window.findRecordById(approvalId) || record;
+        window.renderTeacherClassroomApprovalModal(latestRecord);
+    };
+
     window.checkScheduleConflict = function(roomName, dateValue, startTime, endTime, excludeId=null) {
         if(!roomName || !dateValue || !startTime || !endTime) return false;
         const targetStart = new Date(dateValue.replace(/-/g, '/') + ' ' + startTime + ':00');
@@ -4348,10 +4651,14 @@ body::before {
         if(data.length===0){tb.innerHTML='<tr><td colspan="3" class="p-6 text-center text-gray-400 font-bold">目前無待審核</td></tr>';return;} 
         tb.innerHTML=''; 
         data.forEach(i=>{ 
-            const id=window.getId(i), eq=window.getEquip(i); 
+            const id=window.getId(i), eq=window.getEquip(i), borrowerMeta=window.parseBorrowerMeta(window.getBorrower(i)); 
+            const waitsTeacherReply = eq.includes('[預借教室]') && borrowerMeta.responsible;
             let eB=''; 
             if(eq.includes('[展覽空間]')) eB='<button onclick="window.openEditExhibitionModal(\'' + id + '\')" class="bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">改期</button>'; 
-            tb.innerHTML+='<tr class="hover:bg-gray-50 transition-colors border-b"><td class="p-3">' + window.formatBorrowerCell(window.getBorrower(i),id) + '</td><td class="p-3">' + window.formatEquipmentCell(eq,window.getQty(i)) + '</td><td class="p-3 text-right whitespace-nowrap">' + eB + '<button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button> <button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button></td></tr>'; 
+            const reviewActions = waitsTeacherReply
+                ? '<span class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 mr-1.5">等待 ' + window.escapeHtml(borrowerMeta.responsible) + ' QR 回覆</span><button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>'
+                : '<button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button> <button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>';
+            tb.innerHTML+='<tr class="hover:bg-gray-50 transition-colors border-b"><td class="p-3">' + window.formatBorrowerCell(window.getBorrower(i),id) + '</td><td class="p-3">' + window.formatEquipmentCell(eq,window.getQty(i)) + '</td><td class="p-3 text-right whitespace-nowrap">' + eB + reviewActions + '</td></tr>'; 
         }); 
         if (window.lucide) window.lucide.createIcons(); 
     };
@@ -4774,7 +5081,8 @@ body::before {
         try {
             const bN=$(`borrower-${type}`).value.trim(), bP=$(`borrower-phone-${type}`).value.trim(), bC=$(`borrower-class-${type}`)?$(`borrower-class-${type}`).value:''; let bor=(bC?'[' + bC + '] ':'')+bN;
             const rC=$(`resp-teacher-container-${type}`)||$('resp-teacher-container'), rN=$(`responsible-teacher-${type}`);
-            if((type==='classroom'||type==='exhibition')&&rN&&rC&&!rC.classList.contains('hidden')&&rN.value.trim()!=='') bor+=' (負責: ' + rN.value.trim() + ')';
+            const hasResponsibleTeacher = !!((type==='classroom'||type==='exhibition')&&rN&&rC&&!rC.classList.contains('hidden')&&rN.value.trim()!=='');
+            if(hasResponsibleTeacher) bor+=' (負責: ' + rN.value.trim() + ')';
             if(bP) bor+=' (' + bP + ')';
             let eq='', qty=1; const qtyN=$(`quantity-${type}`); if(qtyN) qty=parseInt(qtyN.value);
             if(type==='key') { eq='[鑰匙] ' + $('equipment-key').value; if($('need-remote-key')?.checked) eq+=' (+遙控器)'; if($('need-doccam-key')?.checked) eq+=' (+投影機)'; if($('need-drawingpen-key')?.checked) eq+=' (+電繪筆 x' + ($('drawingpen-qty').value||1) + ')'; if($('need-airbrush-key')?.checked) eq+=' (+噴筆槍 x' + ($('airbrush-qty').value||1) + ' [' + Array.from($$('.airbrush-id-select')).map(x=>x.value).filter(v=>v).join(',') + '])'; if($('need-tabletpen-key')?.checked) eq+=' (+平板筆 x' + ($('tabletpen-qty').value||1) + ')'; } 
@@ -4783,11 +5091,66 @@ body::before {
             else if(type==='exhibition') { const spVal=$('equipment-exhibition')?$('equipment-exhibition').value:'未知', stVal=$('reserve-start-exhibition')?$('reserve-start-exhibition').value:'', enVal=$('reserve-end-exhibition')?$('reserve-end-exhibition').value:''; if(stVal>enVal){ window.showToast('結束日期錯誤','error'); if(btn)btn.disabled=false; return; } if(window.checkExhibitionConflict(spVal,stVal,enVal)){ window.showToast('該時段已有其他展覽或活動安排！','error'); if(btn)btn.disabled=false; return; } eq='[展覽空間] ' + spVal + ' - ' + ($('exhibition-name')?$('exhibition-name').value.trim():'活動') + ' (' + stVal + ' ~ ' + enVal + ')'; }
             
             let exDtN=null; if(type==='exhibition') exDtN=$('reserve-end-exhibition'); else if(type==='classroom') exDtN=$('reserve-date-classroom'); else exDtN=$(`expectedReturnDate-${type}`);
-            const payload={ action:'borrow', borrower:bor, 借用人:bor, equipment:eq, 設備名稱:eq, quantity:qty, 數量:qty, expectedReturnDate:exDtN&&exDtN.value?exDtN.value:'', 預計歸還日期:exDtN&&exDtN.value?exDtN.value:'', status:type==='key'?'借用中':'待審核', 狀態:type==='key'?'借用中':'待審核', time:new Date().toLocaleString('zh-TW',{hour12:false}), 借用時間:new Date().toLocaleString('zh-TW',{hour12:false}) };
+            const requestRef = window.makeBorrowRequestRef('req');
+            const recordId = window.makeBorrowRequestRef('record');
+            const submitTime = new Date().toLocaleString('zh-TW',{hour12:false});
+            const needsTeacherQrApproval = type === 'classroom' && hasResponsibleTeacher;
+            const payload={ action:'borrow', id:recordId, ID:recordId, requestRef, 申請參照:requestRef, borrower:bor, 借用人:bor, equipment:eq, 設備名稱:eq, quantity:qty, 數量:qty, expectedReturnDate:exDtN&&exDtN.value?exDtN.value:'', 預計歸還日期:exDtN&&exDtN.value?exDtN.value:'', status:type==='key'?'借用中':'待審核', 狀態:type==='key'?'借用中':'待審核', time:submitTime, 借用時間:submitTime };
+            const signature = {
+                requestRef,
+                borrower: payload.borrower,
+                equipment: payload.equipment,
+                expectedReturnDate: payload.expectedReturnDate,
+                time: payload.time
+            };
             const gasUrl=$('gas-url')?$('gas-url').value.trim():'';
-            if(!gasUrl.startsWith('http')){ (window.mockDatabase=window.mockDatabase||[]).unshift({...payload, ID:Date.now().toString()}); window.showToast('模擬成功'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); window.switchTab('report-tab'); if(btn)btn.disabled=false; return; }
-            fetch(gasUrl, {method:'POST', body:JSON.stringify(payload), headers:{'Content-Type':'text/plain;charset=utf-8'}}).then(()=>{ window.showToast('申請已送出'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).catch(err=>{ window.showToast('發送成功，跳轉中','success'); e.target.reset(); if(type==='eq') window.resetEquipBorrowForm(); window.applyBorrowDefaultDates(true); setTimeout(()=>{ window.fetchData(true); window.switchTab('report-tab'); }, 800); }).finally(()=>{if(btn)btn.disabled=false;});
+            if(!gasUrl.startsWith('http')){
+                const savedRecord = { ...payload };
+                (window.mockDatabase=window.mockDatabase||[]).unshift(savedRecord);
+                e.target.reset();
+                if(type==='eq') window.resetEquipBorrowForm();
+                window.applyBorrowDefaultDates(true);
+                await window.fetchData(true);
+                if(needsTeacherQrApproval) {
+                    window.openClassroomApprovalQrModal(savedRecord);
+                    window.showToast('申請已送出，請讓老師掃描 QR 確認');
+                } else {
+                    window.showToast('模擬成功');
+                    window.switchTab('report-tab');
+                }
+                if(btn)btn.disabled=false;
+                return;
+            }
+
+            let submitSucceeded = false;
+            try {
+                const response = await fetch(gasUrl, {method:'POST', body:JSON.stringify(payload), headers:{'Content-Type':'text/plain;charset=utf-8'}});
+                submitSucceeded = response.ok;
+            } catch(err) {
+                submitSucceeded = false;
+            }
+
+            e.target.reset();
+            if(type==='eq') window.resetEquipBorrowForm();
+            window.applyBorrowDefaultDates(true);
+
+            if(needsTeacherQrApproval) {
+                const savedRecord = await window.waitForBorrowRecord(signature, submitSucceeded ? 5 : 6);
+                if(savedRecord) {
+                    window.openClassroomApprovalQrModal(savedRecord);
+                    window.showToast('申請已送出，請讓老師掃描 QR 確認');
+                } else {
+                    window.showToast(submitSucceeded ? '申請已送出，但暫時抓不到 QR 資料' : '送出後尚未同步，請稍後到報表頁確認', submitSucceeded ? 'error' : 'success');
+                    window.switchTab('report-tab');
+                }
+            } else {
+                window.showToast(submitSucceeded ? '申請已送出' : '發送成功，跳轉中', submitSucceeded ? 'success' : 'success');
+                await window.sleep(500);
+                await window.fetchData(true);
+                window.switchTab('report-tab');
+            }
         } catch(err) { window.showToast('錯誤', 'error'); if(btn)btn.disabled=false; }
+        finally { if(btn) btn.disabled=false; }
     };
 
     window.init = function() { 
@@ -4795,7 +5158,12 @@ body::before {
         if($('report-start-date')) $('report-start-date').value = t; 
         if($('report-end-date')) $('report-end-date').value = t;
         window.applyBorrowDefaultDates(true);
-        window.loadSettingsFromCloud().then(() => { window.fetchData(); });
+        window.loadSettingsFromCloud().then(async () => {
+            await window.fetchData();
+            if(window.getClassroomApprovalIdFromUrl()) {
+                window.handleTeacherClassroomApprovalRoute();
+            }
+        });
         window.updateDateTimeDisplay(); setInterval(window.updateDateTimeDisplay, 1000);
         window.startAutoRefresh(); 
         const rc = $('exhibition-recommendations'); if(rc) { rc.innerHTML = '<div class="flex-r gap-2"><i data-lucide="sparkles" class="w-4 h-4"></i> 請先選擇空間查看推薦</div>'; }
