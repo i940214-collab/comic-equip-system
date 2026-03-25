@@ -1250,9 +1250,34 @@ body.approval-route-mode #teacher-classroom-approval-close {
 }
 .teacher-schedule-cell.is-editable {
     cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 .teacher-schedule-cell.is-editable:hover {
     background: rgba(238,242,255,0.92);
+}
+.teacher-schedule-cell.is-editable[data-has-entry="1"] {
+    cursor: grab;
+}
+.teacher-schedule-cell.is-editable[data-has-entry="1"]:active {
+    cursor: grabbing;
+}
+.teacher-schedule-cell.drag-source {
+    background: rgba(219, 234, 254, 0.72);
+}
+.teacher-schedule-cell.drag-source .teacher-schedule-slot {
+    transform: scale(0.97);
+    opacity: 0.72;
+    box-shadow: 0 20px 38px rgba(37, 99, 235, 0.14);
+}
+.teacher-schedule-cell.drag-target {
+    background: rgba(239, 246, 255, 0.96);
+}
+.teacher-schedule-cell.drag-target .teacher-schedule-slot {
+    border-style: solid;
+    border-color: rgba(37, 99, 235, 0.92);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), inset 0 1px 0 rgba(255,255,255,0.92);
 }
 .teacher-schedule-slot {
     min-height: 86px;
@@ -1295,6 +1320,9 @@ body.approval-route-mode #teacher-classroom-approval-close {
     color: #64748b;
     line-height: 1.45;
     text-align: center;
+}
+.teacher-schedule-admin-board-dragging .teacher-schedule-cell.is-editable:not(.drag-source) .teacher-schedule-slot.empty {
+    color: #94a3b8;
 }
 .teacher-schedule-admin-meta {
     display: grid;
@@ -1927,10 +1955,13 @@ try {
                     <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
                             <h4 class="flex-r gap-2 text-[1.15rem] font-black text-slate-800"><i data-lucide="layout-grid" class="w-5 h-5 text-blue-500"></i> 每週授課節次</h4>
-                            <p class="mt-2 text-sm font-medium text-slate-500">點擊任一儲存格即可新增、修改或刪除該節的課程與教室資訊。</p>
+                            <p class="mt-2 text-sm font-medium text-slate-500">短按任一儲存格即可新增、修改或刪除；長按已有課程後可直接拖移到其他節次。</p>
                         </div>
                         <div class="flex flex-wrap gap-2">
-                            <span class="schedule-note-chip"><i data-lucide="pencil-line" class="w-3.5 h-3.5"></i> 點擊儲存格編輯</span>
+                            <button type="button" id="teacher-schedule-drag-save-btn" onclick="window.commitTeacherScheduleBoardChanges()" class="hidden btn btn-b px-4 py-2.5 text-sm shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存拖移變更</button>
+                            <span id="teacher-schedule-drag-dirty-badge" class="hidden schedule-note-chip text-amber-700 border border-amber-200 bg-amber-50"><i data-lucide="clock-3" class="w-3.5 h-3.5"></i> 拖移尚未同步</span>
+                            <span class="schedule-note-chip"><i data-lucide="pencil-line" class="w-3.5 h-3.5"></i> 短按儲存格編輯</span>
+                            <span class="schedule-note-chip"><i data-lucide="move" class="w-3.5 h-3.5"></i> 長按課程拖移</span>
                             <span class="schedule-note-chip"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> 僅後台可修改</span>
                         </div>
                     </div>
@@ -2171,6 +2202,24 @@ try {
     window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
     window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
     window.loadingOverlayDepth = window.loadingOverlayDepth || 0;
+    window.teacherScheduleLongPressMs = window.teacherScheduleLongPressMs || 320;
+    window.teacherScheduleDragThreshold = window.teacherScheduleDragThreshold || 12;
+    window.teacherScheduleBoardDirty = window.teacherScheduleBoardDirty || false;
+    window.teacherScheduleDragState = window.teacherScheduleDragState || {
+        pointerId: null,
+        pressTimer: null,
+        sourceCell: null,
+        sourceScheduleKey: '',
+        sourceDay: 0,
+        sourcePeriodId: '',
+        sourceEntryId: '',
+        sourceHadEntry: false,
+        startX: 0,
+        startY: 0,
+        dragging: false,
+        targetCell: null,
+        suppressClickUntil: 0
+    };
     
     window.currentEquipPage = window.currentEquipPage || 1; 
     window.equipSearchTerm = window.equipSearchTerm || ''; 
@@ -2458,6 +2507,13 @@ try {
         return (!p || p.length <= 6) ? p : p.substring(0, 2) + "****" + p.substring(p.length - 4); 
     };
 
+    window.normalizeTeacherEmpId = function(value) {
+        return String(value || '')
+            .trim()
+            .replace(/\s+/g, '')
+            .toLowerCase();
+    };
+
     window.formatBorrowerCell = function(bor, id, full=false) {
         let n=bor||'', p='', rt='', cl=''; 
         const rM=n.match(/ \((?:負責|負責老師):\s*(.*?)\)/); if(rM){rt=rM[1];n=n.replace(rM[0],'');} 
@@ -2592,6 +2648,95 @@ try {
         return (window.teacherSchedules || []).find(entry => entry.scheduleKey === scheduleKey && Number(entry.day) === Number(day) && String(entry.periodId) === String(periodId)) || null;
     };
 
+    window.sortTeacherScheduleEntries = function(entries) {
+        return (Array.isArray(entries) ? entries : []).sort((a, b) => {
+            const teacherOrder = String(a && a.scheduleKey || '').localeCompare(String(b && b.scheduleKey || ''), 'zh-Hant');
+            if(teacherOrder !== 0) return teacherOrder;
+            if(Number(a && a.day) !== Number(b && b.day)) return Number(a && a.day) - Number(b && b.day);
+            return window.getTeacherSchedulePeriodOrder(a && a.periodId) - window.getTeacherSchedulePeriodOrder(b && b.periodId);
+        });
+    };
+
+    window.clearTeacherScheduleDragTimer = function() {
+        const state = window.teacherScheduleDragState || {};
+        if(state.pressTimer) {
+            clearTimeout(state.pressTimer);
+            state.pressTimer = null;
+        }
+    };
+
+    window.getTeacherScheduleCellFromPoint = function(clientX, clientY) {
+        const board = $('teacher-schedule-admin-board');
+        if(!board) return null;
+        const element = document.elementFromPoint(clientX, clientY);
+        const cell = element && typeof element.closest === 'function'
+            ? element.closest('#teacher-schedule-admin-board [data-schedule-cell=\"true\"]')
+            : null;
+        return board.contains(cell) ? cell : null;
+    };
+
+    window.setTeacherScheduleDragTarget = function(nextTarget) {
+        const state = window.teacherScheduleDragState || {};
+        if(state.targetCell === nextTarget) return;
+        if(state.targetCell) state.targetCell.classList.remove('drag-target');
+        state.targetCell = nextTarget || null;
+        if(state.targetCell) state.targetCell.classList.add('drag-target');
+    };
+
+    window.resetTeacherScheduleDragVisuals = function() {
+        const state = window.teacherScheduleDragState || {};
+        const board = $('teacher-schedule-admin-board');
+        if(board) board.classList.remove('teacher-schedule-admin-board-dragging');
+        if(state.sourceCell) state.sourceCell.classList.remove('drag-source');
+        if(state.targetCell) state.targetCell.classList.remove('drag-target');
+    };
+
+    window.removeTeacherScheduleDragListeners = function() {
+        window.removeEventListener('pointermove', window.handleTeacherScheduleDragPointerMove);
+        window.removeEventListener('pointerup', window.handleTeacherScheduleDragPointerUp);
+        window.removeEventListener('pointercancel', window.handleTeacherScheduleDragPointerCancel);
+    };
+
+    window.resetTeacherScheduleDragState = function(options = {}) {
+        const state = window.teacherScheduleDragState || {};
+        window.clearTeacherScheduleDragTimer();
+        window.removeTeacherScheduleDragListeners();
+        window.resetTeacherScheduleDragVisuals();
+        state.pointerId = null;
+        state.sourceCell = null;
+        state.sourceScheduleKey = '';
+        state.sourceDay = 0;
+        state.sourcePeriodId = '';
+        state.sourceEntryId = '';
+        state.sourceHadEntry = false;
+        state.startX = 0;
+        state.startY = 0;
+        state.dragging = false;
+        state.targetCell = null;
+        if(options.suppressClick) {
+            state.suppressClickUntil = Date.now() + 400;
+        }
+    };
+
+    window.syncTeacherScheduleDraftUi = function() {
+        const saveBtn = $('teacher-schedule-drag-save-btn');
+        const dirtyBadge = $('teacher-schedule-drag-dirty-badge');
+        if(saveBtn) {
+            if(window.teacherScheduleBoardDirty) show('teacher-schedule-drag-save-btn');
+            else hide('teacher-schedule-drag-save-btn');
+        }
+        if(dirtyBadge) {
+            if(window.teacherScheduleBoardDirty) show('teacher-schedule-drag-dirty-badge');
+            else hide('teacher-schedule-drag-dirty-badge');
+        }
+        if(window.lucide) window.lucide.createIcons();
+    };
+
+    window.setTeacherScheduleBoardDirty = function(isDirty) {
+        window.teacherScheduleBoardDirty = !!isDirty;
+        window.syncTeacherScheduleDraftUi();
+    };
+
     window.findTeacherScheduleMatches = function(query) {
         const keyword = String(query || '').trim().toLowerCase();
         if(!keyword) return [];
@@ -2636,7 +2781,7 @@ try {
                     slotHtml = '<div class="w-full text-center"><div class="teacher-schedule-course">' + window.escapeHtml(entry.courseName) + '</div>' + (entry.location ? '<div class="teacher-schedule-location">' + window.escapeHtml(entry.location) + '</div>' : '') + '</div>';
                 }
                 const actionAttrs = editable
-                    ? ' data-schedule-key="' + window.escapeHtml(scheduleKey) + '" data-day="' + window.escapeHtml(day.id) + '" data-period-id="' + window.escapeHtml(period.id) + '" onclick="window.openTeacherScheduleEditor(this)"'
+                    ? ' data-schedule-cell="true" data-schedule-key="' + window.escapeHtml(scheduleKey) + '" data-day="' + window.escapeHtml(day.id) + '" data-period-id="' + window.escapeHtml(period.id) + '" data-entry-id="' + window.escapeHtml(entry ? entry.id : '') + '" data-has-entry="' + (entry ? '1' : '0') + '" onpointerdown="window.handleTeacherScheduleCellPointerDown(event,this)" onclick="window.handleTeacherScheduleCellClick(event,this)"'
                     : '';
                 html += '<td class="' + cellClass + '"' + actionAttrs + '><div class="' + slotClass + '">' + slotHtml + '</div></td>';
             });
@@ -2672,6 +2817,139 @@ try {
         });
         html += '</tbody></table></div>';
         return html;
+    };
+
+    window.startTeacherScheduleDrag = function() {
+        const state = window.teacherScheduleDragState || {};
+        if(!state.sourceCell || !state.sourceHadEntry) return;
+        const board = $('teacher-schedule-admin-board');
+        state.dragging = true;
+        if(board) board.classList.add('teacher-schedule-admin-board-dragging');
+        state.sourceCell.classList.add('drag-source');
+        window.setTeacherScheduleDragTarget(state.sourceCell);
+        window.clearTeacherScheduleDragTimer();
+        if(navigator.vibrate) {
+            try { navigator.vibrate(16); } catch(error) {}
+        }
+    };
+
+    window.handleTeacherScheduleCellPointerDown = function(event, cell) {
+        if(window.currentAdminRole !== 'super') return;
+        if(!cell || !cell.dataset) return;
+        if(event.pointerType === 'mouse' && event.button !== 0) return;
+        window.resetTeacherScheduleDragState();
+        const state = window.teacherScheduleDragState || {};
+        state.pointerId = event.pointerId;
+        state.sourceCell = cell;
+        state.sourceScheduleKey = String(cell.dataset.scheduleKey || '');
+        state.sourceDay = Number(cell.dataset.day);
+        state.sourcePeriodId = String(cell.dataset.periodId || '');
+        state.sourceEntryId = String(cell.dataset.entryId || '');
+        state.sourceHadEntry = cell.dataset.hasEntry === '1';
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        window.addEventListener('pointermove', window.handleTeacherScheduleDragPointerMove, { passive: false });
+        window.addEventListener('pointerup', window.handleTeacherScheduleDragPointerUp, { passive: false });
+        window.addEventListener('pointercancel', window.handleTeacherScheduleDragPointerCancel, { passive: false });
+        if(state.sourceHadEntry) {
+            state.pressTimer = setTimeout(() => window.startTeacherScheduleDrag(), window.teacherScheduleLongPressMs);
+        }
+    };
+
+    window.handleTeacherScheduleDragPointerMove = function(event) {
+        const state = window.teacherScheduleDragState || {};
+        if(state.pointerId == null || event.pointerId !== state.pointerId) return;
+        const movedDistance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
+        if(!state.dragging) {
+            if(movedDistance > window.teacherScheduleDragThreshold) {
+                window.clearTeacherScheduleDragTimer();
+            }
+            return;
+        }
+        event.preventDefault();
+        window.setTeacherScheduleDragTarget(window.getTeacherScheduleCellFromPoint(event.clientX, event.clientY));
+    };
+
+    window.handleTeacherScheduleCellClick = function(event, cell) {
+        const state = window.teacherScheduleDragState || {};
+        if((state.suppressClickUntil || 0) > Date.now()) {
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+        }
+        window.openTeacherScheduleEditor(cell);
+        return true;
+    };
+
+    window.moveTeacherScheduleEntry = async function(sourceMeta, targetMeta) {
+        if(window.currentAdminRole !== 'super') return window.showToast('只有後台管理員可以移動課表', 'error');
+        const sourceScheduleKey = String(sourceMeta && sourceMeta.scheduleKey || '').trim();
+        const sourceDay = Number(sourceMeta && sourceMeta.day);
+        const sourcePeriodId = String(sourceMeta && sourceMeta.periodId || '').trim();
+        const targetScheduleKey = String(targetMeta && targetMeta.scheduleKey || '').trim();
+        const targetDay = Number(targetMeta && targetMeta.day);
+        const targetPeriodId = String(targetMeta && targetMeta.periodId || '').trim();
+        if(!sourceScheduleKey || !sourceDay || !sourcePeriodId || !targetScheduleKey || !targetDay || !targetPeriodId) return;
+        if(sourceScheduleKey === targetScheduleKey && sourceDay === targetDay && sourcePeriodId === targetPeriodId) return;
+
+        const nextSchedules = (window.teacherSchedules || []).map(entry => ({ ...entry }));
+        const sourceIndex = nextSchedules.findIndex(entry => entry.scheduleKey === sourceScheduleKey && Number(entry.day) === sourceDay && String(entry.periodId) === sourcePeriodId);
+        if(sourceIndex < 0) return window.showToast('原課程不存在，請重新整理後再試', 'error');
+        const targetIndex = nextSchedules.findIndex(entry => entry.scheduleKey === targetScheduleKey && Number(entry.day) === targetDay && String(entry.periodId) === targetPeriodId);
+        const sourceEntry = { ...nextSchedules[sourceIndex], scheduleKey: targetScheduleKey, day: targetDay, periodId: targetPeriodId };
+        const hasTargetEntry = targetIndex >= 0;
+
+        if(hasTargetEntry) {
+            nextSchedules[targetIndex] = { ...nextSchedules[targetIndex], scheduleKey: sourceScheduleKey, day: sourceDay, periodId: sourcePeriodId };
+        }
+        nextSchedules[sourceIndex] = sourceEntry;
+        window.teacherSchedules = window.sortTeacherScheduleEntries(nextSchedules);
+        localStorage.setItem('teacherSchedules', JSON.stringify(window.teacherSchedules || []));
+        window.setTeacherScheduleBoardDirty(true);
+        window.syncTeacherScheduleViews();
+        window.showToast(hasTargetEntry ? '已暫存課程對調，記得按右上方儲存' : '已暫存課程移動，記得按右上方儲存');
+    };
+
+    window.commitTeacherScheduleBoardChanges = async function() {
+        if(!window.teacherScheduleBoardDirty) return window.showToast('目前沒有需要儲存的拖移變更', 'error');
+        window.showLoadingOverlay('正在同步拖移後的課表，請稍候一下。', '儲存課表變更');
+        const saved = await window.saveSettingsToCloud();
+        window.hideLoadingOverlay(true);
+        if(saved) {
+            window.setTeacherScheduleBoardDirty(false);
+            window.syncTeacherScheduleViews();
+            window.showToast('課表拖移變更已儲存');
+            return;
+        }
+        window.syncTeacherScheduleViews();
+        window.showToast(window.lastSettingsSaveError || '課表儲存失敗', 'error');
+    };
+
+    window.handleTeacherScheduleDragPointerUp = async function(event) {
+        const state = window.teacherScheduleDragState || {};
+        if(state.pointerId == null || event.pointerId !== state.pointerId) return;
+        const wasDragging = !!state.dragging;
+        const sourceMeta = {
+            scheduleKey: state.sourceScheduleKey,
+            day: state.sourceDay,
+            periodId: state.sourcePeriodId
+        };
+        const targetCell = wasDragging ? (state.targetCell || window.getTeacherScheduleCellFromPoint(event.clientX, event.clientY)) : null;
+        const targetMeta = targetCell ? {
+            scheduleKey: String(targetCell.dataset.scheduleKey || ''),
+            day: Number(targetCell.dataset.day),
+            periodId: String(targetCell.dataset.periodId || '')
+        } : null;
+        window.resetTeacherScheduleDragState({ suppressClick: wasDragging });
+        if(wasDragging && targetMeta) {
+            await window.moveTeacherScheduleEntry(sourceMeta, targetMeta);
+        }
+    };
+
+    window.handleTeacherScheduleDragPointerCancel = function(event) {
+        const state = window.teacherScheduleDragState || {};
+        if(state.pointerId == null || (event && event.pointerId != null && event.pointerId !== state.pointerId)) return;
+        window.resetTeacherScheduleDragState({ suppressClick: !!state.dragging });
     };
 
     window.normalizeTeacherScheduleAiPeriodId = function(rawValue) {
@@ -3971,6 +4249,7 @@ try {
         });
         window.showToast('同步中...', 'success');
         if(await window.saveSettingsToCloud()) {
+            window.setTeacherScheduleBoardDirty(false);
             window.teacherScheduleAiState = { isProcessing: false, progress: '', errorMsg: '', successMsg: '成功匯入 ' + parsedDataList.length + ' 位教師的課表。', parsedDataList: [] };
             window.syncTeacherScheduleViews();
             window.renderAdminTeachers();
@@ -4113,8 +4392,10 @@ try {
     window.renderAdminTeacherScheduleSection = function() {
         const board = $('teacher-schedule-admin-board');
         const caption = $('schedule-admin-teacher-caption');
+        window.resetTeacherScheduleDragState();
         window.populateAdminTeacherScheduleSelect();
         window.renderTeacherScheduleAiState();
+        window.syncTeacherScheduleDraftUi();
         const teacher = window.getTeacherByScheduleKey(window.currentAdminTeacherScheduleKey);
 
         if(!teacher) {
@@ -4205,6 +4486,7 @@ try {
 
         window.showToast('同步中...', 'success');
         if(await window.saveSettingsToCloud()) {
+            window.setTeacherScheduleBoardDirty(false);
             window.closeTeacherScheduleEditor();
             window.syncTeacherScheduleViews();
             window.showToast('課表已更新');
@@ -4219,6 +4501,7 @@ try {
         window.teacherSchedules = (window.teacherSchedules || []).filter(entry => entry.id !== context.entryId);
         window.showToast('同步中...', 'success');
         if(await window.saveSettingsToCloud()) {
+            window.setTeacherScheduleBoardDirty(false);
             window.closeTeacherScheduleEditor();
             window.syncTeacherScheduleViews();
             window.showToast('課表已刪除');
@@ -4234,6 +4517,7 @@ try {
             window.teacherSchedules = (window.teacherSchedules || []).filter(entry => entry.scheduleKey !== teacher.scheduleKey);
             window.showToast('同步中...', 'success');
             if(await window.saveSettingsToCloud()) {
+                window.setTeacherScheduleBoardDirty(false);
                 window.syncTeacherScheduleViews();
                 window.showToast('已清空教師課表');
             } else {
@@ -4659,10 +4943,12 @@ try {
         const matchedTeacher = (window.teacherList || []).find(teacher => (teacher.name || '').trim() === responsibleTeacherName);
         const teacherName = $('teacher-classroom-approval-name') ? $('teacher-classroom-approval-name').value.trim() : '';
         const teacherEmpId = $('teacher-classroom-approval-emp-id') ? $('teacher-classroom-approval-emp-id').value.trim() : '';
+        const normalizedTeacherEmpId = window.normalizeTeacherEmpId(teacherEmpId);
+        const normalizedMatchedTeacherEmpId = window.normalizeTeacherEmpId(matchedTeacher && matchedTeacher.empId);
         if(!teacherName) return window.showToast('請填寫回覆教師姓名', 'error');
         if(!teacherEmpId) return window.showToast('請填寫教師職號', 'error');
-        if(!matchedTeacher || !String(matchedTeacher.empId || '').trim()) return window.showToast('系統找不到這位負責老師的職號，請聯絡系辦', 'error');
-        if(teacherEmpId.trim().toLowerCase() !== String(matchedTeacher.empId || '').trim().toLowerCase()) return window.showToast('教師職號驗證失敗，請確認後再送出', 'error');
+        if(!matchedTeacher || !normalizedMatchedTeacherEmpId) return window.showToast('系統找不到這位負責老師的職號，請聯絡系辦', 'error');
+        if(normalizedTeacherEmpId !== normalizedMatchedTeacherEmpId) return window.showToast('教師職號驗證失敗，英文字母大小寫不限，請確認內容是否正確', 'error');
         if(teacherName.replace(/\s+/g, '') !== String(matchedTeacher.name || '').replace(/\s+/g, '')) return window.showToast('回覆教師姓名需與負責老師一致', 'error');
         const nextStatus = decision === 'approve' ? ('待管理員審核 (教師同意: ' + (matchedTeacher.name || teacherName) + ')') : '已拒絕';
         await window.executeReturn(approvalId, nextStatus, decision === 'approve' ? '正在送出同意結果，請稍候...' : '正在送出不同意結果，請稍候...');
@@ -5173,6 +5459,7 @@ try {
         localStorage.setItem('exhibitionAnnouncement',window.exhibitionAnnouncement);
         localStorage.setItem('exhibitionBlockedRanges',JSON.stringify(window.exhibitionBlockedRanges || []));
         if(!u.startsWith('http')){
+            window.setTeacherScheduleBoardDirty(false);
             return true;
         }
         try {
@@ -5197,6 +5484,7 @@ try {
                     window.lastSettingsSaveError = '雲端已回應成功，但無法回讀驗證 curriculum 是否真的寫入。';
                     return false;
                 }
+                window.setTeacherScheduleBoardDirty(false);
                 return true;
             }
             window.lastSettingsSaveError = result.message || result.error || '雲端回傳儲存失敗。';
