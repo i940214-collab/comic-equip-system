@@ -440,6 +440,49 @@ body.approval-route-mode #teacher-classroom-approval-modal > div {
 body.approval-route-mode #teacher-classroom-approval-close {
     display: none !important;
 }
+body.exhibition-admin-route-mode {
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 20%, #f4f8ff 100%);
+}
+body.exhibition-admin-route-mode::before {
+    opacity: 0.1;
+    mask-image: radial-gradient(circle at top center, rgba(0,0,0,0.48), transparent 74%);
+}
+body.exhibition-admin-route-mode #floating-teacher-schedule-btn,
+body.exhibition-admin-route-mode .hero-panel,
+body.exhibition-admin-route-mode .app-tabs {
+    display: none !important;
+}
+body.exhibition-admin-route-mode .page-shell {
+    max-width: 1200px;
+    padding-top: 1.5rem;
+}
+body.exhibition-admin-route-mode .page-shell > :not(main):not(#password-modal):not(#global-loading-overlay):not(#toast) {
+    display: none !important;
+}
+body.exhibition-admin-route-mode #borrow-tab,
+body.exhibition-admin-route-mode #report-tab,
+body.exhibition-admin-route-mode #query-tab,
+body.exhibition-admin-route-mode #teacher-schedule-tab {
+    display: none !important;
+}
+body.exhibition-admin-route-mode #admin-tab.active {
+    display: block !important;
+}
+body.exhibition-admin-route-mode #btn-admin-exit,
+body.exhibition-admin-route-mode #password-modal-cancel,
+body.exhibition-admin-route-mode #password-modal-reset-wrap {
+    display: none !important;
+}
+body.exhibition-admin-route-mode #admin-tab {
+    padding-top: 0 !important;
+}
+body.exhibition-admin-route-mode .surface-panel {
+    border-radius: 2rem;
+    overflow: hidden;
+}
+body.exhibition-admin-route-mode .admin-shell {
+    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,248,255,0.94));
+}
 .teacher-approval-badge {
     display: inline-flex;
     align-items: center;
@@ -1539,8 +1582,12 @@ body.approval-route-mode #teacher-classroom-approval-close {
 <body class="min-h-screen font-sans text-slate-800 antialiased">
 <script>
 try {
-    if (new URL(window.location.href).searchParams.get('classroomApproval')) {
+    const params = new URL(window.location.href).searchParams;
+    if (params.get('classroomApproval')) {
         document.body.classList.add('approval-route-mode');
+    }
+    if (params.get('exhibitionAdmin')) {
+        document.body.classList.add('exhibition-admin-route-mode');
     }
 } catch (err) {}
 </script>
@@ -1815,7 +1862,7 @@ try {
 
         <!-- 管理員控制台 -->
         <div id="admin-tab" class="tab-content p-6 md:p-8 text-gray-800">
-            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2 flex-wrap"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
+            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3" id="admin-console-tag"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 id="admin-console-title" class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p id="admin-console-caption" class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2 flex-wrap"><button id="btn-copy-exhibition-admin-link" onclick="window.copyExhibitionAdminLink()" class="btn btn-g text-xs border border-purple-100"><i data-lucide="link-2" class="w-4 h-4"></i> 複製展覽管理連結</button><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button id="btn-admin-exit" onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
 
             <div class="mb-8 flex-r gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap no-print overflow-visible">
                 <button onclick="window.switchAdminSection('dashboard-section')" id="btn-admin-dashboard" class="a-btn a-act">教室借用現況</button>
@@ -1976,7 +2023,7 @@ try {
     </main>
 
     <!-- 彈窗 (Modals) -->
-    <div id="password-modal" class="mod-w hidden"><div class="mod-b text-center"><div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 mb-4 text-blue-600"><i data-lucide="lock" class="w-8 h-8"></i></div><h3 class="font-black text-xl mb-6">管理員登入</h3><input type="password" id="admin-password" class="inp text-center font-mono tracking-widest mb-4" placeholder="密碼" onkeydown="if(event.key==='Enter') window.verifyPassword()"><button onclick="window.verifyPassword()" class="btn btn-b w-full py-3 mb-2">登入</button><button onclick="hide('password-modal')" class="btn btn-g w-full bg-transparent shadow-none hover:bg-gray-100">取消</button><div class="mt-4 border-t pt-4 text-gray-800"><button onclick="window.openResetPasswordModal()" class="text-[13px] text-blue-500 font-bold hover:underline underline-offset-4 decoration-blue-200 transition-colors">重設密碼？</button></div></div></div>
+    <div id="password-modal" class="mod-w hidden"><div class="mod-b text-center"><div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 mb-4 text-blue-600"><i data-lucide="lock" class="w-8 h-8"></i></div><h3 id="password-modal-title" class="font-black text-xl mb-3">管理員登入</h3><p id="password-modal-subtitle" class="text-sm font-medium text-slate-500 mb-6">請輸入管理員密碼以進入系統。</p><input type="password" id="admin-password" class="inp text-center font-mono tracking-widest mb-4" placeholder="密碼" onkeydown="if(event.key==='Enter') window.verifyPassword()"><button id="password-modal-submit" onclick="window.verifyPassword()" class="btn btn-b w-full py-3 mb-2">登入</button><button id="password-modal-cancel" onclick="hide('password-modal')" class="btn btn-g w-full bg-transparent shadow-none hover:bg-gray-100">取消</button><div id="password-modal-reset-wrap" class="mt-4 border-t pt-4 text-gray-800"><button onclick="window.openResetPasswordModal()" class="text-[13px] text-blue-500 font-bold hover:underline underline-offset-4 decoration-blue-200 transition-colors">重設密碼？</button></div></div></div>
     <div id="reset-password-modal" class="mod-w hidden"><div class="mod-b text-center"><div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-50 mb-4 text-indigo-600"><i data-lucide="key-round" class="w-8 h-8"></i></div><h3 class="font-black text-xl mb-4">重設密碼</h3><div class="space-y-4 mb-6"><input type="password" id="reset-old-password" class="inp text-center font-mono text-sm tracking-[0.2em]" placeholder="輸入舊密碼"><input type="password" id="reset-new-password" class="inp text-center font-mono text-sm tracking-[0.2em]" placeholder="輸入新密碼"></div><button onclick="window.confirmResetPassword()" class="btn bg-indigo-600 text-white w-full py-3 mb-3 hover:bg-indigo-700">更新密碼</button><button onclick="window.closeResetPasswordModal()" class="btn btn-g w-full bg-transparent shadow-none text-sm">取消</button></div></div>
     
     <!-- 教室詳細視窗 -->
@@ -2201,6 +2248,7 @@ try {
     window.lastSettingsSaveError = window.lastSettingsSaveError || '';
     window.currentClassroomApprovalLink = window.currentClassroomApprovalLink || '';
     window.currentClassroomApprovalRecordId = window.currentClassroomApprovalRecordId || '';
+    window.currentExhibitionAdminLink = window.currentExhibitionAdminLink || '';
     window.loadingOverlayDepth = window.loadingOverlayDepth || 0;
     window.teacherScheduleLongPressMs = window.teacherScheduleLongPressMs || 320;
     window.teacherScheduleDragThreshold = window.teacherScheduleDragThreshold || 12;
@@ -4682,6 +4730,53 @@ try {
         }
     };
 
+    window.isExhibitionAdminRouteMode = function() {
+        try {
+            const raw = new URL(window.location.href).searchParams.get('exhibitionAdmin');
+            return raw !== null && raw !== '0' && raw !== 'false';
+        } catch(err) {
+            return false;
+        }
+    };
+
+    window.syncExhibitionAdminRouteMode = function() {
+        if(!document.body || !document.body.classList) return;
+        document.body.classList.toggle('exhibition-admin-route-mode', window.isExhibitionAdminRouteMode());
+    };
+
+    window.buildExhibitionAdminLink = function() {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('classroomApproval');
+            url.searchParams.delete('exhibitionAdmin');
+            url.searchParams.set('exhibitionAdmin', '1');
+            return url.toString();
+        } catch(err) {
+            return '';
+        }
+    };
+
+    window.copyExhibitionAdminLink = async function() {
+        const link = window.buildExhibitionAdminLink();
+        if(!link) return window.showToast('目前無法建立專用連結', 'error');
+        window.currentExhibitionAdminLink = link;
+        try {
+            if(navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(link);
+            } else {
+                const input = document.createElement('input');
+                input.value = link;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+            }
+            window.showToast('展覽管理專用連結已複製');
+        } catch(err) {
+            window.showToast('複製失敗，請稍後再試', 'error');
+        }
+    };
+
     window.isClassroomApprovalRouteMode = function() {
         return !!window.getClassroomApprovalIdFromUrl();
     };
@@ -5199,14 +5294,70 @@ try {
     window.handleConfirmAction = function() { if(window.confirmActionCallbackLocal) window.confirmActionCallbackLocal(); window.closeConfirmModal(); };
 
     // --- 管理登入控制 ---
-    window.openAdmin = function() { show('password-modal'); if($('admin-password')){ $('admin-password').value=''; setTimeout(()=>$('admin-password').focus(),100); } };
-    window.verifyPassword = function() { const p=$('admin-password').value; if(p===window.superAdminPassword) { window.currentAdminRole='super'; hide('password-modal'); window.switchTab('admin-tab'); } else if(p===window.exhibitionAdminPassword) { window.currentAdminRole='exhibition'; hide('password-modal'); window.switchTab('admin-tab'); } else window.showToast('密碼錯誤！', 'error'); };
-    window.openResetPasswordModal = function() { hide('password-modal'); if($('reset-old-password'))$('reset-old-password').value=''; if($('reset-new-password'))$('reset-new-password').value=''; show('reset-password-modal'); };
-    window.closeResetPasswordModal = function() { hide('reset-password-modal'); show('password-modal'); };
+    window.updateAdminLoginModal = function() {
+        const isExhibitionRoute = window.isExhibitionAdminRouteMode();
+        if($('password-modal-title')) $('password-modal-title').innerText = isExhibitionRoute ? '展覽管理員登入' : '管理員登入';
+        if($('password-modal-subtitle')) $('password-modal-subtitle').innerText = isExhibitionRoute
+            ? '這是展覽管理專用入口。登入後只會開放展覽審核與展覽借用設定。'
+            : '請輸入管理員密碼以進入系統。';
+        if($('password-modal-submit')) $('password-modal-submit').innerText = isExhibitionRoute ? '進入展覽管理' : '登入';
+        if($('password-modal-cancel')) {
+            if(isExhibitionRoute) hide('password-modal-cancel');
+            else show('password-modal-cancel');
+        }
+        if($('password-modal-reset-wrap')) {
+            if(isExhibitionRoute) hide('password-modal-reset-wrap');
+            else show('password-modal-reset-wrap');
+        }
+    };
+    window.openAdmin = function() {
+        window.updateAdminLoginModal();
+        show('password-modal');
+        if($('admin-password')){
+            $('admin-password').value='';
+            setTimeout(()=>$('admin-password').focus(),100);
+        }
+    };
+    window.verifyPassword = function() {
+        const p=$('admin-password').value;
+        if(window.isExhibitionAdminRouteMode()) {
+            if(p===window.exhibitionAdminPassword) {
+                window.currentAdminRole='exhibition';
+                hide('password-modal');
+                window.switchTab('admin-tab');
+            } else {
+                window.showToast('此入口僅接受展覽管理員密碼', 'error');
+            }
+            return;
+        }
+        if(p===window.superAdminPassword) {
+            window.currentAdminRole='super';
+            hide('password-modal');
+            window.switchTab('admin-tab');
+        } else if(p===window.exhibitionAdminPassword) {
+            window.currentAdminRole='exhibition';
+            hide('password-modal');
+            window.switchTab('admin-tab');
+        } else window.showToast('密碼錯誤！', 'error');
+    };
+    window.openResetPasswordModal = function() {
+        if(window.isExhibitionAdminRouteMode()) return;
+        hide('password-modal');
+        if($('reset-old-password')) $('reset-old-password').value = '';
+        if($('reset-new-password')) $('reset-new-password').value = '';
+        show('reset-password-modal');
+    };
+    window.closeResetPasswordModal = function() {
+        hide('reset-password-modal');
+        window.openAdmin();
+    };
     window.confirmResetPassword = function() { const o=$('reset-old-password').value, n=$('reset-new-password').value; if(!o||!n) return window.showToast('請填寫完整', 'error'); if(o!==window.superAdminPassword) return window.showToast('原有密碼錯誤', 'error'); window.superAdminPassword=n; localStorage.setItem('adminPassword', n); window.showToast('更新成功！請重新登入'); window.closeResetPasswordModal(); };
 
     // --- 流程與背景更新控制 ---
     window.switchTab = function(id) {
+        if(window.isExhibitionAdminRouteMode() && id !== 'admin-tab') {
+            id = 'admin-tab';
+        }
         $$('.tab-content').forEach(el=>{ el.classList.remove('active'); el.style.display='none'; }); if($(id)) { $(id).classList.add('active'); $(id).style.display='block'; }
         ['borrow-tab','report-tab','query-tab'].forEach(tid=>{ const btn=$(`btn-${tid}`); if(btn) { btn.className=(tid===id)?"t-btn t-act":"t-btn"; }});
         if($('floating-teacher-schedule-btn')) $('floating-teacher-schedule-btn').classList.toggle('active', id === 'teacher-schedule-tab');
@@ -5247,6 +5398,9 @@ try {
     };
 
     window.switchAdminSection = function(sId) {
+        if(window.isExhibitionAdminRouteMode() && sId !== 'review-section') {
+            sId = 'review-section';
+        }
         $$('.admin-section-content').forEach(el=>{ el.classList.add('hidden'); el.style.display='none'; }); if($(sId)) { $(sId).classList.remove('hidden'); $(sId).style.display='block'; }
         ['dashboard', 'review', 'equip-status', 'equip', 'abnormal'].forEach(b=>{ if($(`btn-admin-${b}`)) $(`btn-admin-${b}`).className=(sId===`${b}-section`)?"a-btn a-act":"a-btn"; });
         const gBtn=$('btn-admin-settings-group'); if(gBtn) gBtn.className=['teacher-section','teacher-schedule-section','class-section','key-section','period-section'].includes(sId)?"a-btn a-act flex-r gap-1":"a-btn flex-r gap-1";
@@ -5268,12 +5422,30 @@ try {
 
     window.applyAdminRoleUI = function() {
         const isExh = window.currentAdminRole === 'exhibition';
-        if($('btn-admin-dashboard')) { isExh ? hide('btn-admin-dashboard') : show('btn-admin-dashboard'); }
-        if($('btn-admin-equip')) { isExh ? hide('btn-admin-equip') : show('btn-admin-equip'); }
-        if($('admin-settings-dropdown-wrapper')) { isExh ? hide('admin-settings-dropdown-wrapper') : show('admin-settings-dropdown-wrapper'); }
-        if($('btn-admin-abnormal')) { isExh ? hide('btn-admin-abnormal') : show('btn-admin-abnormal'); }
+        const isExhRoute = window.isExhibitionAdminRouteMode();
+        if($('btn-admin-dashboard')) { (isExh || isExhRoute) ? hide('btn-admin-dashboard') : show('btn-admin-dashboard'); }
+        if($('btn-admin-equip')) { (isExh || isExhRoute) ? hide('btn-admin-equip') : show('btn-admin-equip'); }
+        if($('btn-admin-equip-status')) { (isExh || isExhRoute) ? hide('btn-admin-equip-status') : show('btn-admin-equip-status'); }
+        if($('admin-settings-dropdown-wrapper')) { (isExh || isExhRoute) ? hide('admin-settings-dropdown-wrapper') : show('admin-settings-dropdown-wrapper'); }
+        if($('btn-admin-abnormal')) { (isExh || isExhRoute) ? hide('btn-admin-abnormal') : show('btn-admin-abnormal'); }
         if($('admin-exhibition-settings-wrapper')) { show('admin-exhibition-settings-wrapper'); }
-        const badge = $('admin-role-badge'); if (isExh) { if(badge) show('admin-role-badge'); if($('admin-equip-status-cards')) hide('admin-equip-status-cards'); window.switchAdminSection('review-section'); } else { if(badge) hide('admin-role-badge'); if($('admin-equip-status-cards')) show('admin-equip-status-cards'); window.switchAdminSection('dashboard-section'); }
+        if($('btn-admin-exit')) { isExhRoute ? hide('btn-admin-exit') : show('btn-admin-exit'); }
+        if($('admin-console-tag')) $('admin-console-tag').innerHTML = '<i data-lucide="shield" class="w-3.5 h-3.5"></i> ' + (isExhRoute ? 'Exhibition Portal' : 'Admin Console');
+        if($('admin-console-title')) $('admin-console-title').innerHTML = '<i data-lucide="shield-check" class="text-blue-600"></i> ' + (isExhRoute ? '展覽管理專用入口' : '管理員控制台') + ' <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold ' + ((isExh || isExhRoute) ? '' : 'hidden') + '">展覽管理員</span>';
+        if($('admin-console-caption')) $('admin-console-caption').innerText = isExhRoute
+            ? '這個入口只提供展覽借用審核與展覽借用設定，無法切回首頁或操作其他一般功能。'
+            : '集中處理借用審核、設備狀態、教師名單與場域設定。';
+        const badge = $('admin-role-badge');
+        if (isExh || isExhRoute) {
+            if(badge) show('admin-role-badge');
+            if($('admin-equip-status-cards')) hide('admin-equip-status-cards');
+            window.switchAdminSection('review-section');
+        } else {
+            if(badge) hide('admin-role-badge');
+            if($('admin-equip-status-cards')) show('admin-equip-status-cards');
+            window.switchAdminSection('dashboard-section');
+        }
+        if(window.lucide) window.lucide.createIcons();
     };
 
     window.toggleSettingsDropdown = function(e){ e.stopPropagation(); window.closeExhibitionSettingsDropdown(); if($('admin-settings-menu')) { $('admin-settings-menu').classList.toggle('hidden'); } };
@@ -6343,9 +6515,14 @@ try {
 
     window.init = function() { 
         const approvalRouteId = window.getClassroomApprovalIdFromUrl();
+        const exhibitionAdminRouteMode = window.isExhibitionAdminRouteMode();
         window.syncClassroomApprovalRouteMode();
+        window.syncExhibitionAdminRouteMode();
         if(approvalRouteId) {
             window.handleTeacherClassroomApprovalRoute();
+        }
+        if(exhibitionAdminRouteMode) {
+            window.openAdmin();
         }
         const t = window.getLocalDateString(); window.lastKnownDateStr = t; 
         if($('report-start-date')) $('report-start-date').value = t; 
