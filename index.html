@@ -1787,7 +1787,7 @@ try {
 
         <!-- 管理員控制台 -->
         <div id="admin-tab" class="tab-content p-6 md:p-8 text-gray-800">
-            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2 flex-wrap"><button onclick="window.openExhibitionRestrictionModal()" id="btn-admin-exhibition-blackout" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex-r gap-1 whitespace-nowrap bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-sm"><i data-lucide="calendar-x-2" class="w-4 h-4"></i> 設定不外借時段</button><button onclick="window.openAnnouncementModal()" id="btn-admin-announcement" class="px-5 py-2.5 text-sm font-bold rounded-lg transition-all flex-r gap-1 whitespace-nowrap bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 shadow-sm"><i data-lucide="megaphone" class="w-4 h-4"></i> 編輯展覽公告</button><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
+            <div class="admin-shell mb-6 p-5 md:p-6 flex-b gap-4 flex-wrap"><div><div class="section-tag mb-3"><i data-lucide="shield" class="w-3.5 h-3.5"></i> Admin Console</div><h2 class="text-xl font-bold flex-r gap-2 text-blue-900"><i data-lucide="shield-check" class="text-blue-600"></i> 管理員控制台 <span id="admin-role-badge" class="ml-2 px-2.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-md font-bold hidden">展覽管理員</span></h2><p class="soft-caption mt-2">集中處理借用審核、設備狀態、教師名單與場域設定。</p></div><div class="flex-r gap-2 flex-wrap"><button onclick="window.forceRefreshAll(event)" class="btn btn-i text-xs border border-blue-100"><i data-lucide="cloud-download" class="w-4 h-4"></i> 重新載入設定</button><button onclick="window.switchTab('borrow-tab')" class="btn btn-g text-xs border">離開</button></div></div>
 
             <div class="mb-8 flex-r gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap no-print overflow-visible">
                 <button onclick="window.switchAdminSection('dashboard-section')" id="btn-admin-dashboard" class="a-btn a-act">教室借用現況</button>
@@ -1804,6 +1804,12 @@ try {
                     </div>
                 </div>
                 <button onclick="window.switchAdminSection('abnormal-section')" id="btn-admin-abnormal" class="a-btn">異常回報處理</button>
+                <div class="relative" id="admin-exhibition-settings-wrapper"><button onclick="window.toggleExhibitionSettingsDropdown(event)" id="btn-admin-exhibition-settings-group" class="a-btn flex-r gap-1">展覽借用設定 <i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+                    <div id="admin-exhibition-settings-menu" class="hidden absolute left-0 z-50 mt-2 w-52 rounded-xl shadow-xl bg-white border border-gray-100 overflow-hidden flex-col">
+                        <a href="#" onclick="window.openExhibitionRestrictionModal(); window.closeExhibitionSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm border-b font-bold"><i data-lucide="calendar-x-2" class="inline w-4 h-4 text-slate-600 mr-2"></i>設定不外借時段</a>
+                        <a href="#" onclick="window.openAnnouncementModal(); window.closeExhibitionSettingsDropdown();" class="block px-4 py-3 hover:bg-gray-50 text-sm font-bold"><i data-lucide="megaphone" class="inline w-4 h-4 text-amber-600 mr-2"></i>編輯展覽公告</a>
+                    </div>
+                </div>
             </div>
             
             <div id="dashboard-section" class="admin-section-content block animate-fadeIn">
@@ -4980,12 +4986,16 @@ try {
         if($('btn-admin-equip')) { isExh ? hide('btn-admin-equip') : show('btn-admin-equip'); }
         if($('admin-settings-dropdown-wrapper')) { isExh ? hide('admin-settings-dropdown-wrapper') : show('admin-settings-dropdown-wrapper'); }
         if($('btn-admin-abnormal')) { isExh ? hide('btn-admin-abnormal') : show('btn-admin-abnormal'); }
+        if($('admin-exhibition-settings-wrapper')) { show('admin-exhibition-settings-wrapper'); }
         const badge = $('admin-role-badge'); if (isExh) { if(badge) show('admin-role-badge'); if($('admin-equip-status-cards')) hide('admin-equip-status-cards'); window.switchAdminSection('review-section'); } else { if(badge) hide('admin-role-badge'); if($('admin-equip-status-cards')) show('admin-equip-status-cards'); window.switchAdminSection('dashboard-section'); }
     };
 
-    window.toggleSettingsDropdown = function(e){ e.stopPropagation(); if($('admin-settings-menu')) { $('admin-settings-menu').classList.toggle('hidden'); } };
+    window.toggleSettingsDropdown = function(e){ e.stopPropagation(); window.closeExhibitionSettingsDropdown(); if($('admin-settings-menu')) { $('admin-settings-menu').classList.toggle('hidden'); } };
     window.closeSettingsDropdown = function(){ if($('admin-settings-menu')) $('admin-settings-menu').classList.add('hidden'); };
+    window.toggleExhibitionSettingsDropdown = function(e){ e.stopPropagation(); window.closeSettingsDropdown(); if($('admin-exhibition-settings-menu')) { $('admin-exhibition-settings-menu').classList.toggle('hidden'); } };
+    window.closeExhibitionSettingsDropdown = function(){ if($('admin-exhibition-settings-menu')) $('admin-exhibition-settings-menu').classList.add('hidden'); };
     document.addEventListener('click', window.closeSettingsDropdown);
+    document.addEventListener('click', window.closeExhibitionSettingsDropdown);
     document.addEventListener('click', function(event) {
         const searchShell = event.target && event.target.closest ? event.target.closest('.teacher-schedule-search-shell') : null;
         if(!searchShell) window.closeTeacherScheduleSearchResults();
