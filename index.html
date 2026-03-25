@@ -6135,6 +6135,7 @@ try {
     window.renderAdminReview = function(){ 
         const tb=$('admin-review-body'); if(!tb)return; 
         const data=(window.windowData||window.mockDatabase||[]).filter(i=>!(window.deletedIds && window.deletedIds.has(String(window.getId(i))))&&window.isPendingReviewStatus(i)&&(window.currentAdminRole!=='exhibition'||window.getEquip(i).includes('[展覽空間]'))); 
+        const showFullPhone = window.currentAdminRole === 'exhibition' || window.isExhibitionAdminRouteMode();
         if(data.length===0){tb.innerHTML='<tr><td colspan="3" class="p-6 text-center text-gray-400 font-bold">目前無待審核</td></tr>';return;} 
         tb.innerHTML=''; 
         data.forEach(i=>{ 
@@ -6148,7 +6149,7 @@ try {
                 : waitsAdminDecision
                     ? '<span class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 mr-1.5">老師已同意，等待系辦核准</span><button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button><button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>'
                     : '<button onclick="window.openApproveModal(\'' + id + '\')" class="bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors mr-1.5">核准</button> <button onclick="window.openConfirmModal(\'拒絕\',\'確定？\',()=>window.executeReturn(\'' + id + '\',\'已拒絕\'))" class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold inline-flex transition-colors">拒絕</button>';
-            tb.innerHTML+='<tr class="hover:bg-gray-50 transition-colors border-b"><td class="p-3 align-top">' + window.formatBorrowerCell(window.getBorrower(i),id) + '</td><td class="p-3 align-top admin-review-equipment-cell"><div class="admin-review-equipment-shell">' + window.formatEquipmentCell(eq,window.getQty(i)) + '</div></td><td class="p-3 align-top admin-review-actions-cell"><div class="admin-review-actions">' + eB + reviewActions + '</div></td></tr>'; 
+            tb.innerHTML+='<tr class="hover:bg-gray-50 transition-colors border-b"><td class="p-3 align-top">' + window.formatBorrowerCell(window.getBorrower(i),id,showFullPhone) + '</td><td class="p-3 align-top admin-review-equipment-cell"><div class="admin-review-equipment-shell">' + window.formatEquipmentCell(eq,window.getQty(i)) + '</div></td><td class="p-3 align-top admin-review-actions-cell"><div class="admin-review-actions">' + eB + reviewActions + '</div></td></tr>'; 
         }); 
         if (window.lucide) window.lucide.createIcons(); 
     };
