@@ -1914,7 +1914,7 @@ try {
                     <div>
                         <div class="section-tag mb-3"><i data-lucide="calendar-range" class="w-3.5 h-3.5"></i> Exhibition Timeline</div>
                         <h3 class="text-[1.2rem] font-black text-slate-900">目前與未來展期行程表</h3>
-                        <p class="mt-2 text-sm font-medium leading-6 text-slate-500">只顯示已核准的展覽檔期。可直接從這裡回頭調整活動名稱、借用單位、負責老師與展期日期。</p>
+                        <p class="mt-2 text-sm font-medium leading-6 text-slate-500">顯示目前與未來所有展期安排。已核准展期可直接從這裡回頭調整活動名稱、借用單位、負責老師與展期日期。</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <span id="exhibition-schedule-current-chip" class="schedule-note-chip border border-emerald-200 bg-emerald-50 text-emerald-700"><i data-lucide="calendar-check-2" class="w-3.5 h-3.5"></i> 目前展期 0</span>
@@ -5140,6 +5140,7 @@ try {
                 window.renderAdminAbnormal();
             }
             window.renderAdminReview();
+            window.renderAdminExhibitionSchedule();
             window.renderAdminEquipStatus();
         }
         if($('exhibition-borrow-section') && !$('exhibition-borrow-section').classList.contains('hidden')) {
@@ -5390,6 +5391,7 @@ try {
         if(id==='admin-tab') { 
             window.applyAdminRoleUI(); 
             window.renderAdminReview(); 
+            window.renderAdminExhibitionSchedule();
             window.renderAdminEquipStatus(); 
             window.renderAdminEquipment(); 
             window.renderAdminTeachers(); 
@@ -5421,7 +5423,7 @@ try {
         ['dashboard', 'review', 'exhibition-schedule', 'equip-status', 'equip', 'abnormal'].forEach(b=>{ if($(`btn-admin-${b}`)) $(`btn-admin-${b}`).className=(sId===`${b}-section`)?"a-btn a-act":"a-btn"; });
         const gBtn=$('btn-admin-settings-group'); if(gBtn) gBtn.className=['teacher-section','teacher-schedule-section','class-section','key-section','period-section'].includes(sId)?"a-btn a-act flex-r gap-1":"a-btn flex-r gap-1";
         
-        if(['dashboard-section', 'review-section', 'equip-status-section', 'abnormal-section'].includes(sId)) {
+        if(['dashboard-section', 'review-section', 'exhibition-schedule-section', 'equip-status-section', 'abnormal-section'].includes(sId)) {
             window.startAutoRefresh(); 
         } else {
             window.stopAutoRefresh();
@@ -5610,6 +5612,7 @@ try {
                     window.renderAdminAbnormal();
                 } 
                 window.renderAdminReview();
+                window.renderAdminExhibitionSchedule();
                 window.renderAdminEquipStatus(); 
             } 
             if(!$('exhibition-borrow-section').classList.contains('hidden')) {
@@ -5997,7 +6000,146 @@ try {
         }); 
         if (window.lucide) window.lucide.createIcons(); 
     };
-    
+
+    window.renderAdminExhibitionSchedule = function() {
+        const board = $('admin-exhibition-schedule-board');
+        if(!board) return;
+
+        const currentChip = $('exhibition-schedule-current-chip');
+        const upcomingChip = $('exhibition-schedule-upcoming-chip');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const timelineItems = (window.windowData || window.mockDatabase || [])
+            .filter(item => {
+                if(window.deletedIds && window.deletedIds.has(String(window.getId(item)))) return false;
+                const status = window.getStatus(item);
+                const equipment = window.getEquip(item);
+                if(!equipment.includes('[展覽空間]')) return false;
+                if(status === '已拒絕' || status === '已刪除' || status.includes('已歸還')) return false;
+                const parsed = window.parseExhibitionEquipment(equipment);
+                if(!parsed.start || !parsed.end) return false;
+                return new Date(parsed.end + 'T23:59:59') >= today;
+            })
+            .map(item => {
+                const parsed = window.parseExhibitionEquipment(window.getEquip(item));
+                const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(item));
+                const startDate = new Date(parsed.start + 'T00:00:00');
+                const endDate = new Date(parsed.end + 'T23:59:59');
+                const status = window.getStatus(item);
+                let statusLabel = startDate <= today && endDate >= today ? '展覽中' : '即將到來';
+                let statusTone = 'approved';
+                if(window.isTeacherApprovalWaiting(item)) {
+                    statusLabel = '待老師回覆';
+                    statusTone = 'teacher';
+                } else if(window.isAdminApprovalWaiting(item)) {
+                    statusLabel = '待系辦審核';
+                    statusTone = 'admin';
+                } else if(window.isPendingReviewStatus(item)) {
+                    statusLabel = '待審核';
+                    statusTone = 'pending';
+                } else if(status.includes('逾期')) {
+                    statusLabel = '展期逾時';
+                    statusTone = 'overdue';
+                }
+                return {
+                    id: String(window.getId(item)),
+                    startDate,
+                    endDate,
+                    phase: startDate <= today && endDate >= today ? 'current' : 'upcoming',
+                    space: parsed.space || '未指定空間',
+                    name: parsed.name || '未命名展覽',
+                    borrower: borrowerMeta.unit ? (borrowerMeta.unit + ' - ' + borrowerMeta.borrower) : (borrowerMeta.borrower || '未填寫借用單位'),
+                    responsible: borrowerMeta.responsible || '未填寫',
+                    phone: borrowerMeta.phone || '',
+                    dateLabel: String(parsed.start || '').replace(/-/g, '/') + ' ~ ' + String(parsed.end || '').replace(/-/g, '/'),
+                    statusLabel,
+                    statusTone
+                };
+            })
+            .sort((a, b) => a.startDate - b.startDate || a.endDate - b.endDate || a.space.localeCompare(b.space, 'zh-Hant'));
+
+        const currentItems = timelineItems.filter(item => item.phase === 'current');
+        const upcomingItems = timelineItems.filter(item => item.phase === 'upcoming');
+
+        if(currentChip) currentChip.innerHTML = '<i data-lucide="calendar-check-2" class="w-3.5 h-3.5"></i> 目前展期 ' + currentItems.length;
+        if(upcomingChip) upcomingChip.innerHTML = '<i data-lucide="calendar-clock" class="w-3.5 h-3.5"></i> 未來展期 ' + upcomingItems.length;
+
+        const renderColumn = function(title, subtitle, items, theme) {
+            const palette = theme === 'current'
+                ? {
+                    border: 'border-emerald-100',
+                    soft: 'bg-emerald-50',
+                    text: 'text-emerald-700',
+                    badge: 'bg-emerald-100 text-emerald-700',
+                    button: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                }
+                : {
+                    border: 'border-purple-100',
+                    soft: 'bg-purple-50',
+                    text: 'text-purple-700',
+                    badge: 'bg-purple-100 text-purple-700',
+                    button: 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                };
+
+            const cards = items.length ? items.map(item => {
+                const badgeClass = item.statusTone === 'teacher'
+                    ? 'bg-sky-100 text-sky-700'
+                    : item.statusTone === 'admin'
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : item.statusTone === 'pending'
+                            ? 'bg-blue-100 text-blue-700'
+                            : item.statusTone === 'overdue'
+                                ? 'bg-rose-100 text-rose-700'
+                                : palette.badge;
+                return (
+                '<div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">' +
+                    '<div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">' +
+                        '<div class="min-w-0 flex-1">' +
+                            '<div class="flex flex-wrap items-center gap-2">' +
+                                '<span class="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-black ' + badgeClass + '">' + window.escapeHtml(item.statusLabel) + '</span>' +
+                                '<span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-500">' + window.escapeHtml(item.space) + '</span>' +
+                            '</div>' +
+                            '<div class="mt-3 text-[1.05rem] font-black leading-7 text-slate-900">' + window.escapeHtml(item.name) + '</div>' +
+                            '<div class="mt-3 grid gap-3 text-sm font-medium text-slate-500 md:grid-cols-2">' +
+                                '<div class="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">' +
+                                    '<div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">展期</div>' +
+                                    '<div class="mt-2 font-black text-slate-700">' + window.escapeHtml(item.dateLabel) + '</div>' +
+                                '</div>' +
+                                '<div class="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">' +
+                                    '<div class="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">借用單位</div>' +
+                                    '<div class="mt-2 font-black text-slate-700">' + window.escapeHtml(item.borrower) + '</div>' +
+                                '</div>' +
+                            '</div>' +
+                            '<div class="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-500">' +
+                                '<span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5"><i data-lucide="user-round" class="w-3.5 h-3.5"></i> 負責老師：' + window.escapeHtml(item.responsible) + '</span>' +
+                                (item.phone ? '<span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5"><i data-lucide="phone" class="w-3.5 h-3.5"></i> ' + window.escapeHtml(item.phone) + '</span>' : '') +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="flex shrink-0 flex-col gap-2">' +
+                            '<button onclick="window.openEditExhibitionModal(\'' + window.escapeHtml(item.id) + '\')" class="btn ' + palette.button + ' border px-4 py-2.5 text-sm shadow-sm"><i data-lucide="square-pen" class="w-4 h-4"></i> 編輯內容</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>'
+                );
+            }).join('') : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white/85 px-6 py-12 text-center text-sm font-medium text-slate-400 shadow-sm">目前沒有' + window.escapeHtml(title) + '紀錄。</div>';
+
+            return '<section class="rounded-[1.8rem] border ' + palette.border + ' bg-white/90 p-5 shadow-sm md:p-6">' +
+                '<div class="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">' +
+                    '<div>' +
+                        '<div class="section-tag mb-3 ' + palette.soft + ' ' + palette.text + ' border border-white/60"><i data-lucide="' + (theme === 'current' ? 'gallery-vertical-end' : 'calendar-plus-2') + '" class="w-3.5 h-3.5"></i> ' + window.escapeHtml(title) + '</div>' +
+                        '<h4 class="text-[1.05rem] font-black text-slate-900">' + window.escapeHtml(subtitle) + '</h4>' +
+                    '</div>' +
+                    '<div class="text-sm font-black ' + palette.text + '">' + items.length + ' 筆</div>' +
+                '</div>' +
+                '<div class="space-y-4">' + cards + '</div>' +
+            '</section>';
+        };
+
+        board.innerHTML = renderColumn('目前展期', '正在進行中的展覽', currentItems, 'current') + renderColumn('未來展期', '接下來已排定的展覽', upcomingItems, 'upcoming');
+        if(window.lucide) window.lucide.createIcons();
+    };
+
     window.renderAdminEquipStatus = function(){ 
         const tb=$('admin-equip-status-body'); if(!tb)return; 
         const data=window.windowData||window.mockDatabase||[]; 
