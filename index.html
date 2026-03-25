@@ -1867,6 +1867,7 @@ try {
             <div class="mb-8 flex-r gap-2 rounded-[1.75rem] border border-white/80 bg-slate-100/70 p-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur flex-wrap no-print overflow-visible">
                 <button onclick="window.switchAdminSection('dashboard-section')" id="btn-admin-dashboard" class="a-btn a-act">教室借用現況</button>
                 <button onclick="window.switchAdminSection('review-section')" id="btn-admin-review" class="a-btn">借用審核</button>
+                <button onclick="window.switchAdminSection('exhibition-schedule-section')" id="btn-admin-exhibition-schedule" class="a-btn">展期行程表</button>
                 <button onclick="window.switchAdminSection('equip-status-section')" id="btn-admin-equip-status" class="a-btn">目前借用中(清點)</button>
                 <button onclick="window.switchAdminSection('equip-section')" id="btn-admin-equip" class="a-btn">設備管理</button>
                 <div class="relative" id="admin-settings-dropdown-wrapper"><button onclick="window.toggleSettingsDropdown(event)" id="btn-admin-settings-group" class="a-btn flex-r gap-1">檔案管理 <i data-lucide="chevron-down" class="w-4 h-4"></i></button>
@@ -1906,6 +1907,21 @@ try {
             
             <div id="review-section" class="admin-section-content hidden animate-fadeIn">
                 <div class="bg-white border rounded-xl overflow-hidden shadow-sm"><table class="min-w-full divide-y"><thead><tr><th class="th">申請人</th><th class="th">設備</th><th class="th text-right">操作</th></tr></thead><tbody id="admin-review-body" class="divide-y text-gray-800"></tbody></table></div>
+            </div>
+
+            <div id="exhibition-schedule-section" class="admin-section-content hidden animate-fadeIn">
+                <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <div class="section-tag mb-3"><i data-lucide="calendar-range" class="w-3.5 h-3.5"></i> Exhibition Timeline</div>
+                        <h3 class="text-[1.2rem] font-black text-slate-900">目前與未來展期行程表</h3>
+                        <p class="mt-2 text-sm font-medium leading-6 text-slate-500">只顯示已核准的展覽檔期。可直接從這裡回頭調整活動名稱、借用單位、負責老師與展期日期。</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span id="exhibition-schedule-current-chip" class="schedule-note-chip border border-emerald-200 bg-emerald-50 text-emerald-700"><i data-lucide="calendar-check-2" class="w-3.5 h-3.5"></i> 目前展期 0</span>
+                        <span id="exhibition-schedule-upcoming-chip" class="schedule-note-chip border border-purple-200 bg-purple-50 text-purple-700"><i data-lucide="calendar-clock" class="w-3.5 h-3.5"></i> 未來展期 0</span>
+                    </div>
+                </div>
+                <div id="admin-exhibition-schedule-board" class="grid gap-5 xl:grid-cols-2"></div>
             </div>
 
             <div id="equip-status-section" class="admin-section-content hidden animate-fadeIn">
@@ -5398,11 +5414,11 @@ try {
     };
 
     window.switchAdminSection = function(sId) {
-        if(window.isExhibitionAdminRouteMode() && sId !== 'review-section') {
+        if(window.isExhibitionAdminRouteMode() && !['review-section', 'exhibition-schedule-section'].includes(sId)) {
             sId = 'review-section';
         }
         $$('.admin-section-content').forEach(el=>{ el.classList.add('hidden'); el.style.display='none'; }); if($(sId)) { $(sId).classList.remove('hidden'); $(sId).style.display='block'; }
-        ['dashboard', 'review', 'equip-status', 'equip', 'abnormal'].forEach(b=>{ if($(`btn-admin-${b}`)) $(`btn-admin-${b}`).className=(sId===`${b}-section`)?"a-btn a-act":"a-btn"; });
+        ['dashboard', 'review', 'exhibition-schedule', 'equip-status', 'equip', 'abnormal'].forEach(b=>{ if($(`btn-admin-${b}`)) $(`btn-admin-${b}`).className=(sId===`${b}-section`)?"a-btn a-act":"a-btn"; });
         const gBtn=$('btn-admin-settings-group'); if(gBtn) gBtn.className=['teacher-section','teacher-schedule-section','class-section','key-section','period-section'].includes(sId)?"a-btn a-act flex-r gap-1":"a-btn flex-r gap-1";
         
         if(['dashboard-section', 'review-section', 'equip-status-section', 'abnormal-section'].includes(sId)) {
@@ -5417,6 +5433,7 @@ try {
         if(sId==='class-section') window.renderAdminClasses(); 
         if(sId==='key-section') window.renderAdminKeys(); 
         if(sId==='period-section') window.renderAdminPeriods();
+        if(sId==='exhibition-schedule-section') window.renderAdminExhibitionSchedule();
         if(window.lucide) window.lucide.createIcons();
     };
 
