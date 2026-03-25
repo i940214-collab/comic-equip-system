@@ -1922,6 +1922,7 @@ try {
                     </div>
                 </div>
                 <div id="admin-exhibition-schedule-board" class="grid gap-5 xl:grid-cols-2"></div>
+                <div id="admin-exhibition-inline-editor-shell" class="hidden mt-6"></div>
             </div>
 
             <div id="equip-status-section" class="admin-section-content hidden animate-fadeIn">
@@ -6117,7 +6118,7 @@ try {
                             '</div>' +
                         '</div>' +
                         '<div class="flex shrink-0 flex-col gap-2">' +
-                            '<button onclick="window.openEditExhibitionModal(\'' + window.escapeHtml(item.id) + '\')" class="btn ' + palette.button + ' border px-4 py-2.5 text-sm shadow-sm"><i data-lucide="square-pen" class="w-4 h-4"></i> 編輯內容</button>' +
+                            '<button type="button" onclick="window.openExhibitionScheduleEditor(\'' + window.escapeHtml(item.id) + '\')" class="btn ' + palette.button + ' border px-4 py-2.5 text-sm shadow-sm"><i data-lucide="square-pen" class="w-4 h-4"></i> 編輯內容</button>' +
                         '</div>' +
                     '</div>' +
                 '</div>'
@@ -6504,35 +6505,98 @@ try {
     window.syncCustomStatus = function() { if($('edit-status-select').value==='custom') show('custom-status-container'); else hide('custom-status-container'); };
     window.saveRecordStatus = function() { const s=$('edit-status-select').value==='custom'?$('edit-status-custom').value.trim():$('edit-status-select').value; if(!s) return window.showToast('輸入狀態','error'); window.executeReturn(window.currentEditStatusId,s); hide('edit-status-modal'); };
 
+    window.getExhibitionEditorFieldId = function(mode, field) {
+        return (mode === 'inline' ? 'inline-edit-exhibition-' : 'edit-exhibition-') + field;
+    };
+
+    window.populateExhibitionEditorFields = function(mode, target) {
+        if(!target) return false;
+        const parsedEquipment = window.parseExhibitionEquipment(window.getEquip(target));
+        const parsedBorrower = window.parseBorrowerMeta(window.getBorrower(target));
+        const nameInput = $(window.getExhibitionEditorFieldId(mode, 'name'));
+        const borrowerInput = $(window.getExhibitionEditorFieldId(mode, 'borrower'));
+        const responsibleInput = $(window.getExhibitionEditorFieldId(mode, 'resp'));
+        const phoneInput = $(window.getExhibitionEditorFieldId(mode, 'phone'));
+        const startInput = $(window.getExhibitionEditorFieldId(mode, 'start'));
+        const endInput = $(window.getExhibitionEditorFieldId(mode, 'end'));
+        if(!nameInput || !borrowerInput || !responsibleInput || !phoneInput || !startInput || !endInput) return false;
+
+        window.editingExhibitionId = String(window.getId(target));
+        window.editingExhibitionOriginalSpace = parsedEquipment.space || '';
+        window.editingExhibitionBorrowerUnit = parsedBorrower.unit || '';
+        nameInput.value = parsedEquipment.name || '';
+        borrowerInput.value = parsedBorrower.unit ? parsedBorrower.unit + ' - ' + parsedBorrower.borrower : parsedBorrower.borrower;
+        responsibleInput.value = parsedBorrower.responsible || '';
+        phoneInput.value = parsedBorrower.phone || '';
+        startInput.value = parsedEquipment.start || '';
+        endInput.value = parsedEquipment.end || '';
+        return true;
+    };
+
+    window.closeExhibitionScheduleEditor = function() {
+        const shell = $('admin-exhibition-inline-editor-shell');
+        if(!shell) return;
+        shell.innerHTML = '';
+        shell.classList.add('hidden');
+        shell.style.display = 'none';
+    };
+
+    window.openExhibitionScheduleEditor = function(id) {
+        const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
+        if(!target) return window.showToast('找不到展覽資料', 'error');
+        const shell = $('admin-exhibition-inline-editor-shell');
+        if(!shell) return window.openEditExhibitionModal(id);
+
+        shell.innerHTML =
+            '<div class="rounded-[1.75rem] border border-purple-100 bg-white p-6 shadow-sm md:p-7">' +
+                '<div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">' +
+                    '<div>' +
+                        '<div class="section-tag mb-3"><i data-lucide="square-pen" class="w-3.5 h-3.5"></i> Exhibition Editor</div>' +
+                        '<h4 class="text-[1.15rem] font-black text-purple-900">編輯展覽內容</h4>' +
+                        '<p class="mt-2 text-sm font-medium leading-6 text-slate-500">修改後按右下角儲存，會直接同步更新目前展期與未來展期行程表。</p>' +
+                    '</div>' +
+                    '<button type="button" onclick="window.closeExhibitionScheduleEditor()" class="btn btn-g px-4 py-2.5 text-sm"><i data-lucide="x" class="w-4 h-4"></i> 關閉編輯</button>' +
+                '</div>' +
+                '<div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">' +
+                    '<div><label class="lbl text-xs">活動名稱</label><input type="text" id="inline-edit-exhibition-name" class="inp font-bold focus:ring-purple-500 border-purple-200"></div>' +
+                    '<div><label class="lbl text-xs">借用人 / 單位</label><input type="text" id="inline-edit-exhibition-borrower" class="inp font-bold focus:ring-purple-500 border-purple-200"></div>' +
+                    '<div><label class="lbl text-xs">負責老師</label><input type="text" id="inline-edit-exhibition-resp" class="inp font-bold focus:ring-purple-500 border-purple-200"></div>' +
+                    '<div><label class="lbl text-xs">聯絡電話</label><input type="text" id="inline-edit-exhibition-phone" class="inp font-mono focus:ring-purple-500 border-purple-200"></div>' +
+                    '<div><label class="lbl text-xs">開始日期</label><input type="date" id="inline-edit-exhibition-start" class="inp font-bold focus:ring-purple-500 border-purple-200"></div>' +
+                    '<div><label class="lbl text-xs">結束日期</label><input type="date" id="inline-edit-exhibition-end" class="inp font-bold focus:ring-purple-500 border-purple-200"></div>' +
+                '</div>' +
+                '<div class="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-5 md:flex-row md:justify-end">' +
+                    '<button type="button" onclick="window.closeExhibitionScheduleEditor()" class="btn btn-g px-5 py-3">取消</button>' +
+                    '<button type="button" onclick="window.confirmEditExhibition(\'inline\')" class="btn btn-p bg-purple-600 px-6 py-3 text-white hover:bg-purple-700 shadow-md"><i data-lucide="save" class="w-4 h-4"></i> 儲存修改</button>' +
+                '</div>' +
+            '</div>';
+        shell.classList.remove('hidden');
+        shell.style.display = 'block';
+        window.populateExhibitionEditorFields('inline', target);
+        shell.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if(window.lucide) window.lucide.createIcons();
+        setTimeout(() => { const input = $('inline-edit-exhibition-name'); if(input) input.focus(); }, 80);
+    };
+
     window.openEditExhibitionModal = function(id) {
         const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
         if(!target) return window.showToast('找不到展覽資料', 'error');
-        const parsedEquipment = window.parseExhibitionEquipment(window.getEquip(target));
-        const parsedBorrower = window.parseBorrowerMeta(window.getBorrower(target));
-        window.editingExhibitionId = String(id);
-        window.editingExhibitionOriginalSpace = parsedEquipment.space || '';
-        window.editingExhibitionBorrowerUnit = parsedBorrower.unit || '';
-        $('edit-exhibition-name').value = parsedEquipment.name || '';
-        $('edit-exhibition-borrower').value = parsedBorrower.unit ? parsedBorrower.unit + ' - ' + parsedBorrower.borrower : parsedBorrower.borrower;
-        $('edit-exhibition-resp').value = parsedBorrower.responsible || '';
-        $('edit-exhibition-phone').value = parsedBorrower.phone || '';
-        $('edit-exhibition-start').value = parsedEquipment.start || '';
-        $('edit-exhibition-end').value = parsedEquipment.end || '';
+        if(!window.populateExhibitionEditorFields('modal', target)) return window.showToast('展覽編輯表單尚未載入', 'error');
         show('edit-exhibition-modal');
         setTimeout(() => { if($('edit-exhibition-name')) $('edit-exhibition-name').focus(); }, 80);
     };
 
-    window.confirmEditExhibition = async function() {
+    window.confirmEditExhibition = async function(mode = 'modal') {
         const id = window.editingExhibitionId;
         const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
         if(!id || !target) return window.showToast('找不到要修改的展覽', 'error');
 
-        const exhibitionName = $('edit-exhibition-name').value.trim();
-        const borrowerInput = $('edit-exhibition-borrower').value.trim();
-        const responsible = $('edit-exhibition-resp').value.trim();
-        const phone = $('edit-exhibition-phone').value.trim();
-        const startDate = $('edit-exhibition-start').value;
-        const endDate = $('edit-exhibition-end').value;
+        const exhibitionName = ($(window.getExhibitionEditorFieldId(mode, 'name')) || {}).value?.trim?.() || '';
+        const borrowerInput = ($(window.getExhibitionEditorFieldId(mode, 'borrower')) || {}).value?.trim?.() || '';
+        const responsible = ($(window.getExhibitionEditorFieldId(mode, 'resp')) || {}).value?.trim?.() || '';
+        const phone = ($(window.getExhibitionEditorFieldId(mode, 'phone')) || {}).value?.trim?.() || '';
+        const startDate = ($(window.getExhibitionEditorFieldId(mode, 'start')) || {}).value || '';
+        const endDate = ($(window.getExhibitionEditorFieldId(mode, 'end')) || {}).value || '';
         const spaceName = window.editingExhibitionOriginalSpace || window.parseExhibitionEquipment(window.getEquip(target)).space;
         const currentStatus = window.getStatus(target);
         const originalEquipment = window.parseExhibitionEquipment(window.getEquip(target));
@@ -6567,7 +6631,8 @@ try {
         };
 
         window.applyBorrowRecordUpdate(id, payload);
-        hide('edit-exhibition-modal');
+        if(mode === 'inline') window.closeExhibitionScheduleEditor();
+        else hide('edit-exhibition-modal');
         window.editingExhibitionId = null;
         window.refreshBorrowViews();
 
