@@ -5356,7 +5356,18 @@ try {
         }
     };
 
-    window.openConfirmModal = function(t, m, cb) { $('confirm-modal-title').innerHTML=t; $('confirm-modal-message').innerHTML=m; window.confirmActionCallbackLocal=cb; show('confirm-modal'); if(window.lucide) window.lucide.createIcons(); };
+    window.openConfirmModal = function(t, m, cb) {
+        if(window.isExhibitionAdminRouteMode()) {
+            const ok = window.confirm(m || '確定要執行這個操作嗎？');
+            if(ok && typeof cb === 'function') cb();
+            return;
+        }
+        $('confirm-modal-title').innerHTML=t;
+        $('confirm-modal-message').innerHTML=m;
+        window.confirmActionCallbackLocal=cb;
+        show('confirm-modal');
+        if(window.lucide) window.lucide.createIcons();
+    };
     window.closeConfirmModal = function() { hide('confirm-modal'); };
     window.handleConfirmAction = function() { if(window.confirmActionCallbackLocal) window.confirmActionCallbackLocal(); window.closeConfirmModal(); };
 
@@ -6540,13 +6551,29 @@ try {
     window.toggleAbnormalDesc = function(v) { if($('return-abnormal-desc')) { if(v) { $('return-abnormal-desc').classList.remove('hidden'); $('return-abnormal-desc').style.display = 'block'; } else { $('return-abnormal-desc').classList.add('hidden'); $('return-abnormal-desc').style.display = 'none'; } } };
     window.confirmAdvancedReturn = function() { let s='已歸還'; const rc=document.querySelector('input[name="remote_status"]:checked'), ac=document.querySelector('input[name="abnormal_status"]:checked'); if(rc&&rc.value==='missing') s='剩遙控器'; if(ac&&ac.value==='yes') s+=` (異常: ${$('return-abnormal-desc').value.trim()||'待查'})`; window.executeReturn(window.currentReturnId,s); hide('advanced-return-modal'); };
 
-    window.openApproveModal = function(id) { window.currentApproveId=id; $('approve-admin-name').value=''; show('approve-modal'); setTimeout(()=>$('approve-admin-name').focus(),100); };
-    window.confirmApprove = function() {
-        const adminName = $('approve-admin-name').value.trim() || '管理員';
+    window.applyApproveAction = function(id, adminName) {
+        window.currentApproveId = id;
         const target = (window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(window.currentApproveId));
         const teacherApprovedBy = target ? window.extractTeacherApprovalNameFromStatus(window.getStatus(target)) : '';
-        const nextStatus = teacherApprovedBy ? `借用中 (教師同意: ${teacherApprovedBy} / 審核: ${adminName})` : `借用中 (審核: ${adminName})`;
+        const normalizedAdminName = String(adminName || '').trim() || '管理員';
+        const nextStatus = teacherApprovedBy ? `借用中 (教師同意: ${teacherApprovedBy} / 審核: ${normalizedAdminName})` : `借用中 (審核: ${normalizedAdminName})`;
         window.executeReturn(window.currentApproveId, nextStatus);
+    };
+    window.openApproveModal = function(id) {
+        if(window.isExhibitionAdminRouteMode()) {
+            const input = window.prompt('請輸入管理員姓名', '管理員');
+            if(input === null) return;
+            window.applyApproveAction(id, input);
+            return;
+        }
+        window.currentApproveId=id;
+        $('approve-admin-name').value='';
+        show('approve-modal');
+        setTimeout(()=>$('approve-admin-name').focus(),100);
+    };
+    window.confirmApprove = function() {
+        const adminName = $('approve-admin-name').value.trim() || '管理員';
+        window.applyApproveAction(window.currentApproveId, adminName);
         hide('approve-modal');
     };
 
@@ -6628,6 +6655,11 @@ try {
     };
 
     window.openEditExhibitionModal = function(id) {
+        if(window.isExhibitionAdminRouteMode()) {
+            window.switchAdminSection('exhibition-schedule-section');
+            setTimeout(() => window.openExhibitionScheduleEditor(id), 0);
+            return;
+        }
         const target = (window.windowData || window.mockDatabase || []).find(item => String(window.getId(item)) === String(id));
         if(!target) return window.showToast('找不到展覽資料', 'error');
         if(!window.populateExhibitionEditorFields('modal', target)) return window.showToast('展覽編輯表單尚未載入', 'error');
