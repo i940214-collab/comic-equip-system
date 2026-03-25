@@ -868,6 +868,52 @@ body.exhibition-admin-route-mode .admin-shell {
 .admin-review-actions > * {
     flex: 0 0 auto;
 }
+.approve-modal-card {
+    width: min(100%, 34rem);
+    border-radius: 2rem;
+    border: 1px solid rgba(187, 247, 208, 0.95);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,253,248,0.98));
+    box-shadow: 0 28px 68px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+}
+.approve-modal-hero {
+    padding: 1.5rem 1.5rem 1.2rem;
+    border-bottom: 1px solid rgba(220, 252, 231, 0.95);
+    background:
+        radial-gradient(circle at top right, rgba(34,197,94,0.12), transparent 28%),
+        linear-gradient(180deg, rgba(240,253,244,0.95), rgba(255,255,255,0.96));
+}
+.approve-modal-summary {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem 0;
+}
+.approve-modal-summary-card {
+    border-radius: 1.35rem;
+    border: 1px solid rgba(220, 252, 231, 0.95);
+    background: rgba(255,255,255,0.9);
+    padding: 0.95rem 1rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.96);
+}
+.approve-modal-label {
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+.approve-modal-value {
+    margin-top: 0.45rem;
+    font-size: 0.98rem;
+    line-height: 1.6;
+    font-weight: 800;
+    color: #0f172a;
+    word-break: break-word;
+}
+.approve-modal-form {
+    padding: 1.2rem 1.5rem 1.5rem;
+}
 .query-tools {
     display: flex;
     justify-content: flex-end;
@@ -2176,7 +2222,51 @@ try {
     
     <div id="confirm-modal" class="mod-w exhibition-admin-route-modal hidden"><div class="bg-white p-6 rounded-3xl w-80 shadow-2xl text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-50 text-red-500 mb-3"><i data-lucide="trash-2"></i></div><h3 id="confirm-modal-title" class="font-bold text-lg mb-2">確認</h3><p id="confirm-modal-message" class="text-sm text-gray-500 mb-6"></p><div class="flex-r justify-center gap-3"><button onclick="window.closeConfirmModal()" class="btn btn-g px-4 py-2">取消</button><button id="btn-confirm-action" onclick="window.handleConfirmAction()" class="btn btn-r text-white bg-red-600 hover:bg-red-700 px-4 py-2 shadow-md">確定</button></div></div></div>
     
-    <div id="approve-modal" class="mod-w exhibition-admin-route-modal hidden"><div class="bg-white p-8 rounded-3xl w-80 shadow-2xl text-center text-gray-800"><div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 text-green-600 mb-3"><i data-lucide="shield-check" class="w-6 h-6"></i></div><h3 class="font-black mb-4 text-green-700 text-xl">審核核准</h3><input type="text" id="approve-admin-name" class="inp text-center mb-6 bg-gray-50 focus:ring-green-500" placeholder="請輸入管理員姓名" onkeydown="if(event.key==='Enter') window.confirmApprove()"><div class="flex-r justify-center gap-3"><button onclick="hide('approve-modal')" class="btn btn-g px-5 py-2.5">取消</button><button onclick="window.confirmApprove()" class="btn btn-gr bg-green-600 text-white hover:bg-green-700 px-6 py-2.5 shadow-md">核准借用</button></div></div></div>
+    <div id="approve-modal" class="mod-w exhibition-admin-route-modal hidden">
+        <div class="approve-modal-card text-gray-800">
+            <div class="approve-modal-hero">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <div class="section-tag mb-3 bg-green-50 text-green-700 border border-green-100"><i data-lucide="badge-check" class="w-3.5 h-3.5"></i> Approval</div>
+                        <h3 class="text-[1.35rem] font-black text-slate-900">確認核准借用</h3>
+                        <p class="mt-2 text-sm font-medium leading-6 text-slate-500">核對申請內容後，輸入管理員姓名再送出。這筆紀錄會立即更新為核准狀態。</p>
+                    </div>
+                    <button type="button" onclick="hide('approve-modal')" class="room-detail-close shrink-0" aria-label="關閉核准視窗">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="approve-modal-summary">
+                <div class="approve-modal-summary-card">
+                    <div class="approve-modal-label">申請人</div>
+                    <div id="approve-modal-borrower" class="approve-modal-value">-</div>
+                </div>
+                <div class="approve-modal-summary-card">
+                    <div class="approve-modal-label">借用內容</div>
+                    <div id="approve-modal-equipment" class="approve-modal-value">-</div>
+                </div>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <div class="approve-modal-summary-card">
+                        <div class="approve-modal-label">展期 / 時間</div>
+                        <div id="approve-modal-period" class="approve-modal-value">-</div>
+                    </div>
+                    <div class="approve-modal-summary-card">
+                        <div class="approve-modal-label">審核狀態</div>
+                        <div id="approve-modal-status" class="approve-modal-value text-green-700">待核准</div>
+                    </div>
+                </div>
+            </div>
+            <div class="approve-modal-form">
+                <label class="lbl text-slate-700" for="approve-admin-name">管理員姓名</label>
+                <input type="text" id="approve-admin-name" class="inp bg-white focus:ring-green-500 font-bold text-center md:text-left" placeholder="請輸入管理員姓名" onkeydown="if(event.key==='Enter') window.confirmApprove()">
+                <p class="mt-3 text-xs font-bold tracking-wide text-slate-400">送出後會保留你的姓名做為下次預設值。</p>
+                <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <button onclick="hide('approve-modal')" class="btn btn-g px-5 py-3">取消</button>
+                    <button onclick="window.confirmApprove()" class="btn btn-gr bg-green-600 text-white hover:bg-green-700 px-6 py-3 shadow-md"><i data-lucide="shield-check" class="w-4 h-4"></i> 確認核准</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="classroom-approval-qr-modal" class="mod-w hidden">
         <div class="w-full max-w-4xl rounded-[2rem] border border-sky-100 bg-white p-6 shadow-2xl text-gray-800 md:p-8">
@@ -2288,6 +2378,7 @@ try {
     window.currentAdminRole = window.currentAdminRole || 'none'; 
     window.superAdminPassword = localStorage.getItem('adminPassword') || 'd101'; 
     window.exhibitionAdminPassword = window.exhibitionAdminPassword || 'y103';
+    window.lastApproveAdminName = localStorage.getItem('lastApproveAdminName') || '';
     
     window.currentReturnId = null; 
     window.currentApproveId = null; 
@@ -6556,20 +6647,39 @@ try {
         const target = (window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(window.currentApproveId));
         const teacherApprovedBy = target ? window.extractTeacherApprovalNameFromStatus(window.getStatus(target)) : '';
         const normalizedAdminName = String(adminName || '').trim() || '管理員';
+        window.lastApproveAdminName = normalizedAdminName;
+        try { localStorage.setItem('lastApproveAdminName', normalizedAdminName); } catch(err) {}
         const nextStatus = teacherApprovedBy ? `借用中 (教師同意: ${teacherApprovedBy} / 審核: ${normalizedAdminName})` : `借用中 (審核: ${normalizedAdminName})`;
         window.executeReturn(window.currentApproveId, nextStatus);
     };
+    window.populateApproveModal = function(id) {
+        const target = (window.windowData||window.mockDatabase||[]).find(r=>String(r.ID||r.id)===String(id));
+        if(!target) return false;
+        const borrowerMeta = window.parseBorrowerMeta(window.getBorrower(target));
+        const equipment = window.getEquip(target);
+        const status = window.getStatus(target);
+        const isExhibition = String(equipment || '').includes('[展覽空間]');
+        const parsedExhibition = isExhibition ? window.parseExhibitionEquipment(equipment) : null;
+        const borrowerText = borrowerMeta.unit ? (borrowerMeta.unit + ' - ' + borrowerMeta.borrower) : (borrowerMeta.borrower || '未填寫');
+        const equipmentText = isExhibition
+            ? ((parsedExhibition && parsedExhibition.space ? parsedExhibition.space + ' - ' : '') + (parsedExhibition && parsedExhibition.name ? parsedExhibition.name : '未命名展覽'))
+            : String(equipment || '').replace(/\[(.*?)\]\s*/g, '').trim();
+        const periodText = isExhibition
+            ? (((parsedExhibition && parsedExhibition.start) || '-') + ' ~ ' + ((parsedExhibition && parsedExhibition.end) || '-'))
+            : (window.getTime(target) || window.getExpDate(target) || '-');
+        if($('approve-modal-borrower')) $('approve-modal-borrower').innerText = borrowerText;
+        if($('approve-modal-equipment')) $('approve-modal-equipment').innerText = equipmentText || '未填寫';
+        if($('approve-modal-period')) $('approve-modal-period').innerText = periodText;
+        if($('approve-modal-status')) $('approve-modal-status').innerText = window.isAdminApprovalWaiting(target) ? '老師已同意，等待系辦核准' : (status || '待核准');
+        return true;
+    };
     window.openApproveModal = function(id) {
-        if(window.isExhibitionAdminRouteMode()) {
-            const input = window.prompt('請輸入管理員姓名', '管理員');
-            if(input === null) return;
-            window.applyApproveAction(id, input);
-            return;
-        }
         window.currentApproveId=id;
-        $('approve-admin-name').value='';
+        if(!window.populateApproveModal(id)) return window.showToast('找不到審核資料', 'error');
+        $('approve-admin-name').value=window.lastApproveAdminName || '';
         show('approve-modal');
         setTimeout(()=>$('approve-admin-name').focus(),100);
+        if(window.lucide) window.lucide.createIcons();
     };
     window.confirmApprove = function() {
         const adminName = $('approve-admin-name').value.trim() || '管理員';
