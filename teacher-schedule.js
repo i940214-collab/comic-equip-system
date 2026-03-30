@@ -215,13 +215,22 @@
         return String(student && (student.className || student.class || student.department) || '').trim();
     };
 
+    window.normalizeContactPhone = function(value) {
+        const raw = String(value ?? '').trim();
+        if(!raw) return '';
+        const digits = raw.replace(/\D/g, '');
+        if(/^9\d{8}$/.test(digits)) return `0${digits}`;
+        if(/^09\d{8}$/.test(digits) && !raw.startsWith('0')) return digits;
+        return raw;
+    };
+
     window.normalizeStudentRecord = function(student) {
         const source = student && typeof student === 'object' ? student : {};
         return {
             name: String(source.name || '').trim(),
             studentId: String(source.studentId || source.id || '').trim(),
             className: window.getStudentClassName(source),
-            phone: String(source.phone || '').trim(),
+            phone: window.normalizeContactPhone(source.phone || ''),
             email: String(source.email || '').trim()
         };
     };
