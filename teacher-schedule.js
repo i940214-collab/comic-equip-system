@@ -320,7 +320,7 @@
             .replace(/＿/g, '_')
             .replace(/\s+/g, '')
             .trim()
-            .toUpperCase();
+            .toLowerCase();
     };
 
     window.normalizeTeacherEmpId = function(value) {
@@ -566,6 +566,19 @@
         }
         window.setBorrowResponsibleTeacherMode(type, profile.kind === 'teacher');
         return true;
+    };
+
+    window.applyBorrowProfileToMatchingScanInputs = function(profile) {
+        if(!profile || !profile.code) return false;
+        let matched = false;
+        ['key', 'eq', 'classroom', 'exhibition'].forEach(type => {
+            const codeInput = $(`borrower-code-${type}`);
+            if(!codeInput) return;
+            if(window.normalizeBorrowProfileCode(codeInput.value || '') !== window.normalizeBorrowProfileCode(profile.code)) return;
+            window.applyBorrowProfileToForm(type, profile);
+            matched = true;
+        });
+        return matched;
     };
 
     window.formatBorrowerCell = function(bor, id, full=false) {

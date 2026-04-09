@@ -6171,7 +6171,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-key" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證條碼後，自動帶入姓名與電話" oninput="window.autoFillBorrowerByCode('key')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-key" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證條碼後，自動帶入姓名與電話" oninput="window.autoFillBorrowerByCode('key')" onkeydown="window.handleBorrowerCodeKeydown(event, 'key')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                             <p class="mt-2 text-xs font-bold text-slate-500">若尚未建檔，請先點上方的「學生雲端建檔」或「教師資料維護」。</p>
                         </div>
@@ -6206,7 +6206,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-eq" class="inp inp-with-icon font-mono" placeholder="掃描後自動帶入借用人姓名與電話" oninput="window.autoFillBorrowerByCode('eq')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-eq" class="inp inp-with-icon font-mono" placeholder="掃描後自動帶入借用人姓名與電話" oninput="window.autoFillBorrowerByCode('eq')" onkeydown="window.handleBorrowerCodeKeydown(event, 'eq')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                         </div>
                         <div><label class="lbl">班級處室</label><select id="borrower-class-eq" class="inp"></select></div>
@@ -6241,7 +6241,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-classroom" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證，快速帶入申請人資料" oninput="window.autoFillBorrowerByCode('classroom')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-classroom" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證，快速帶入申請人資料" oninput="window.autoFillBorrowerByCode('classroom')" onkeydown="window.handleBorrowerCodeKeydown(event, 'classroom')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                         </div>
                         <div><label class="lbl">班級處室</label><select id="borrower-class-classroom" class="inp"></select></div>
@@ -6285,7 +6285,7 @@ try {
                                     <label class="lbl text-purple-900">掃描學號 / 職號</label>
                                     <div class="input-icon-shell">
                                         <i data-lucide="scan-line" class="input-leading-icon text-purple-300"></i>
-                                        <input type="text" id="borrower-code-exhibition" class="inp inp-with-icon font-mono focus:ring-purple-500" placeholder="掃描後自動帶入申請人姓名、電話與班級" oninput="window.autoFillBorrowerByCode('exhibition')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                        <input type="text" id="borrower-code-exhibition" class="inp inp-with-icon font-mono focus:ring-purple-500" placeholder="掃描後自動帶入申請人姓名、電話與班級" oninput="window.autoFillBorrowerByCode('exhibition')" onkeydown="window.handleBorrowerCodeKeydown(event, 'exhibition')" autocomplete="off" autocapitalize="off" spellcheck="false">
                                     </div>
                                 </div>
                                 <div><label class="lbl">班級處室 <span class="text-red-500">*</span></label><select id="borrower-class-exhibition" required class="inp focus:ring-purple-500"></select></div>
@@ -10678,6 +10678,37 @@ try {
             return window.findBorrowProfileByCode(normalized);
         }
     };
+    window.processBorrowerCodeValue = async function(type, announceMiss=false) {
+        const latestInput = $(`borrower-code-${type}`);
+        if(!latestInput) return false;
+        const rawCode = String(latestInput.value || '').trim();
+        const normalizedVisibleCode = typeof window.normalizeBorrowProfileAsciiInput === 'function'
+            ? window.normalizeBorrowProfileAsciiInput(rawCode)
+            : rawCode;
+        if(normalizedVisibleCode && latestInput.value !== normalizedVisibleCode) latestInput.value = normalizedVisibleCode;
+        const requestedCode = window.normalizeBorrowProfileCode(normalizedVisibleCode || rawCode);
+        if(!requestedCode || requestedCode.length < 4) {
+            delete latestInput.dataset.missingPrompted;
+            return false;
+        }
+        const localProfile = window.findBorrowProfileByCode(requestedCode);
+        if(localProfile) {
+            delete latestInput.dataset.missingPrompted;
+            window.applyBorrowProfileToForm(type, localProfile);
+            return true;
+        }
+        const cloudProfile = await window.lookupBorrowProfileFromCloud(requestedCode);
+        if(cloudProfile) {
+            delete latestInput.dataset.missingPrompted;
+            window.applyBorrowProfileToForm(type, cloudProfile);
+            return true;
+        }
+        if(latestInput.dataset.missingPrompted !== requestedCode && window.openBorrowProfileRegistrationByCode(type, latestInput.value || rawCode)) {
+            return false;
+        }
+        if(announceMiss) window.showToast('查無此學號或職號，請先完成基本檔建檔', 'error');
+        return false;
+    };
     window.autoFillBorrowerByCode = function(type, announceMiss=false) {
         const codeInput = $(`borrower-code-${type}`);
         if(!codeInput) return false;
@@ -10707,18 +10738,18 @@ try {
             if(!latestInput) return;
             const latestNormalized = window.normalizeBorrowProfileCode(latestInput.value || '');
             if(latestNormalized !== requestedCode) return;
-            const cloudProfile = await window.lookupBorrowProfileFromCloud(requestedCode);
-            if(cloudProfile) {
-                delete latestInput.dataset.missingPrompted;
-                window.applyBorrowProfileToForm(type, cloudProfile);
-                return;
-            }
-            if(latestInput.dataset.missingPrompted !== requestedCode && window.openBorrowProfileRegistrationByCode(type, latestInput.value || rawCode)) {
-                return;
-            }
-            if(announceMiss) window.showToast('查無此學號或職號，請先完成基本檔建檔', 'error');
-        }, 180);
+            await window.processBorrowerCodeValue(type, announceMiss);
+        }, 120);
         return true;
+    };
+    window.handleBorrowerCodeKeydown = function(event, type) {
+        if(!event || event.key !== 'Enter') return;
+        event.preventDefault();
+        if(window.borrowProfileLookupTimers[type]) {
+            clearTimeout(window.borrowProfileLookupTimers[type]);
+            delete window.borrowProfileLookupTimers[type];
+        }
+        window.processBorrowerCodeValue(type, true);
     };
 
     window.autoFillPhone = function(type) {
@@ -13466,12 +13497,25 @@ try {
         } else {
             (window.studentList = window.studentList || []).push(record);
         }
+        localStorage.setItem('studentList', JSON.stringify((window.studentList || []).map(window.normalizeStudentRecord)));
+        localStorage.setItem('customClassList', JSON.stringify(window.classList || []));
         if(!gasUrl.startsWith('http')) {
             window.initBorrowerProfileDatalist();
             window.initClassSelect();
             if($('admin-tab').classList.contains('active')) {
                 window.renderAdminStudents();
                 window.renderAdminClasses();
+            }
+            if(typeof window.applyBorrowProfileToMatchingScanInputs === 'function') {
+                window.applyBorrowProfileToMatchingScanInputs({
+                    kind: 'student',
+                    code: record.studentId,
+                    name: record.name,
+                    phone: record.phone,
+                    unit: record.className,
+                    email: record.email,
+                    raw: record
+                });
             }
             hide('student-self-edit-modal');
             window.showToast('學生基本檔案已更新');
@@ -13495,6 +13539,17 @@ try {
             if($('admin-tab').classList.contains('active')) {
                 window.renderAdminStudents();
                 window.renderAdminClasses();
+            }
+            if(typeof window.applyBorrowProfileToMatchingScanInputs === 'function') {
+                window.applyBorrowProfileToMatchingScanInputs({
+                    kind: 'student',
+                    code: record.studentId,
+                    name: record.name,
+                    phone: record.phone,
+                    unit: record.className,
+                    email: record.email,
+                    raw: record
+                });
             }
             hide('student-self-edit-modal');
             window.showToast('學生基本檔案已同步');
