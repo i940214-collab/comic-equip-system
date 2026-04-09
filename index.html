@@ -6171,7 +6171,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-key" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證條碼後，自動帶入姓名與電話" oninput="window.autoFillBorrowerByCode('key')" onkeydown="window.handleBorrowerCodeKeydown(event, 'key')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-key" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證條碼後，自動帶入姓名與電話" oninput="window.handleBorrowerCodeInput(event, 'key')" onkeydown="window.handleBorrowerCodeKeydown(event, 'key')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                             <p class="mt-2 text-xs font-bold text-slate-500">若尚未建檔，請先點上方的「學生雲端建檔」或「教師資料維護」。</p>
                         </div>
@@ -6206,7 +6206,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-eq" class="inp inp-with-icon font-mono" placeholder="掃描後自動帶入借用人姓名與電話" oninput="window.autoFillBorrowerByCode('eq')" onkeydown="window.handleBorrowerCodeKeydown(event, 'eq')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-eq" class="inp inp-with-icon font-mono" placeholder="掃描後自動帶入借用人姓名與電話" oninput="window.handleBorrowerCodeInput(event, 'eq')" onkeydown="window.handleBorrowerCodeKeydown(event, 'eq')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                         </div>
                         <div><label class="lbl">班級處室</label><select id="borrower-class-eq" class="inp"></select></div>
@@ -6241,7 +6241,7 @@ try {
                             <label class="lbl">掃描學號 / 職號</label>
                             <div class="input-icon-shell">
                                 <i data-lucide="scan-line" class="input-leading-icon text-slate-400"></i>
-                                <input type="text" id="borrower-code-classroom" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證，快速帶入申請人資料" oninput="window.autoFillBorrowerByCode('classroom')" onkeydown="window.handleBorrowerCodeKeydown(event, 'classroom')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                <input type="text" id="borrower-code-classroom" class="inp inp-with-icon font-mono" placeholder="掃描學生證或教職員證，快速帶入申請人資料" oninput="window.handleBorrowerCodeInput(event, 'classroom')" onkeydown="window.handleBorrowerCodeKeydown(event, 'classroom')" autocomplete="off" autocapitalize="off" spellcheck="false">
                             </div>
                         </div>
                         <div><label class="lbl">班級處室</label><select id="borrower-class-classroom" class="inp"></select></div>
@@ -6285,7 +6285,7 @@ try {
                                     <label class="lbl text-purple-900">掃描學號 / 職號</label>
                                     <div class="input-icon-shell">
                                         <i data-lucide="scan-line" class="input-leading-icon text-purple-300"></i>
-                                        <input type="text" id="borrower-code-exhibition" class="inp inp-with-icon font-mono focus:ring-purple-500" placeholder="掃描後自動帶入申請人姓名、電話與班級" oninput="window.autoFillBorrowerByCode('exhibition')" onkeydown="window.handleBorrowerCodeKeydown(event, 'exhibition')" autocomplete="off" autocapitalize="off" spellcheck="false">
+                                        <input type="text" id="borrower-code-exhibition" class="inp inp-with-icon font-mono focus:ring-purple-500" placeholder="掃描後自動帶入申請人姓名、電話與班級" oninput="window.handleBorrowerCodeInput(event, 'exhibition')" onkeydown="window.handleBorrowerCodeKeydown(event, 'exhibition')" autocomplete="off" autocapitalize="off" spellcheck="false">
                                     </div>
                                 </div>
                                 <div><label class="lbl">班級處室 <span class="text-red-500">*</span></label><select id="borrower-class-exhibition" required class="inp focus:ring-purple-500"></select></div>
@@ -10742,8 +10742,56 @@ try {
         }, 120);
         return true;
     };
+    window.borrowProfileInputState = window.borrowProfileInputState || {};
+    window.handleBorrowerCodeInput = function(event, type) {
+        const codeInput = $(`borrower-code-${type}`);
+        if(!codeInput) return false;
+        const rawCode = String(codeInput.value || '');
+        const normalizedVisibleCode = typeof window.normalizeBorrowProfileAsciiInput === 'function'
+            ? window.normalizeBorrowProfileAsciiInput(rawCode)
+            : rawCode.trim().toLowerCase();
+        if(normalizedVisibleCode !== codeInput.value) codeInput.value = normalizedVisibleCode;
+        const state = window.borrowProfileInputState[type] || { lastAt: 0, lastValue: '' };
+        const now = Date.now();
+        const deltaTime = state.lastAt ? (now - state.lastAt) : 999;
+        const deltaLen = normalizedVisibleCode.length - String(state.lastValue || '').length;
+        window.borrowProfileInputState[type] = {
+            lastAt: now,
+            lastValue: normalizedVisibleCode
+        };
+        const normalized = window.normalizeBorrowProfileCode(normalizedVisibleCode);
+        if(!normalized || normalized.length < 4) {
+            return false;
+        }
+        const localProfile = window.findBorrowProfileByCode(normalized);
+        if(localProfile) {
+            if(window.borrowProfileLookupTimers[type]) {
+                clearTimeout(window.borrowProfileLookupTimers[type]);
+                delete window.borrowProfileLookupTimers[type];
+            }
+            delete codeInput.dataset.missingPrompted;
+            window.applyBorrowProfileToForm(type, localProfile);
+            return true;
+        }
+        const inputType = event && event.inputType ? String(event.inputType) : '';
+        const scannerLike = deltaLen > 1
+            || deltaTime <= 35
+            || inputType === 'insertFromPaste'
+            || /[\r\n\t]/.test(rawCode);
+        if(scannerLike) {
+            if(window.borrowProfileLookupTimers[type]) {
+                clearTimeout(window.borrowProfileLookupTimers[type]);
+                delete window.borrowProfileLookupTimers[type];
+            }
+            window.processBorrowerCodeValue(type, false);
+            return true;
+        }
+        return window.autoFillBorrowerByCode(type, false);
+    };
     window.handleBorrowerCodeKeydown = function(event, type) {
-        if(!event || event.key !== 'Enter') return;
+        if(!event) return;
+        const key = String(event.key || '');
+        if(key !== 'Enter' && key !== 'NumpadEnter' && key !== 'Tab') return;
         event.preventDefault();
         if(window.borrowProfileLookupTimers[type]) {
             clearTimeout(window.borrowProfileLookupTimers[type]);
