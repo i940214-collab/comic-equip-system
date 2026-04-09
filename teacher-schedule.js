@@ -65,24 +65,36 @@
         });
     };
     window.buildCloudSettingsRows = function() {
-        const maxChars = Math.max(Number(window.cloudSettingsMaxCharsPerField) || 47000, 22000);
         const curriculumPayload = window.serializeTeacherSchedulesForCurriculum();
-        if(curriculumPayload.length > maxChars) {
-            throw new Error('curriculum 這一列的可存字數仍不足，請再擴充後端或改成獨立工作表。');
-        }
+        const normalizedDeviceAccess = typeof window.buildDeviceAccessCloudConfig === 'function'
+            ? window.buildDeviceAccessCloudConfig(window.deviceAccessConfig)
+            : window.normalizeDeviceAccessConfig(window.deviceAccessConfig);
+        const campusMapPayload = JSON.stringify(
+            typeof window.normalizeCampusMapConfig === 'function'
+                ? window.normalizeCampusMapConfig(window.campusMapConfig)
+                : (window.campusMapConfig || null)
+        );
+        const equipmentCount = Array.isArray(window.equipmentList) ? window.equipmentList.length : 0;
         return {
             equipment: JSON.stringify({
                 version: 5,
-                items: Array.isArray(window.equipmentList) ? window.equipmentList : [],
+                items: [],
+                itemsStoredInSheet: true,
+                itemCount: equipmentCount,
                 system: {
                     periods: Array.isArray(window.periodList) ? window.periodList : [],
                     roomSchedules: window.roomSchedules || {},
                     exhibitionAnnouncement: window.exhibitionAnnouncement || '',
                     exhibitionBlockedRanges: Array.isArray(window.exhibitionBlockedRanges) ? window.exhibitionBlockedRanges : [],
                     borrowRecordOverrides: window.normalizeBorrowRecordOverrides(window.borrowRecordOverrides),
-                    deviceAccess: window.normalizeDeviceAccessConfig(window.deviceAccessConfig)
+                    deviceAccess: normalizedDeviceAccess,
+                    campusMapConfig: typeof window.normalizeCampusMapConfig === 'function'
+                        ? window.normalizeCampusMapConfig(window.campusMapConfig)
+                        : (window.campusMapConfig || null)
                 }
             }),
+            deviceAccess: JSON.stringify(normalizedDeviceAccess),
+            campusMap: campusMapPayload,
             teachers: JSON.stringify({
                 version: 4,
                 list: Array.isArray(window.teacherList) ? window.teacherList : []
@@ -104,6 +116,8 @@
         return {
             equipment: window.parseCloudSettingsField(source.equipment),
             equipmentSheet: window.parseCloudSettingsField(source.equipmentSheet),
+            deviceAccess: window.parseCloudSettingsField(source.deviceAccess),
+            campusMap: window.parseCloudSettingsField(source.campusMap),
             teachers: window.parseCloudSettingsField(source.teachers),
             keys: window.parseCloudSettingsField(source.keys),
             classes: window.parseCloudSettingsField(source.classes),
@@ -177,12 +191,104 @@
         setTimeout(()=>t.classList.add('translate-y-20', 'opacity-0'), 3000); 
     };
 
-    window.showLoadingOverlay = function(message = '資料同步中，請稍候一下。', title = '系統處理中') {
+    window.loadingOverlayState = window.loadingOverlayState || {
+        title: '系統處理中',
+        message: '資料同步中，請稍候一下。',
+        steps: [],
+        currentStep: -1
+    };
+
+    window.normalizeLoadingOverlaySteps = function(steps) {
+        if(!Array.isArray(steps)) return [];
+        return steps
+            .map((step, index) => {
+                if(step == null) return null;
+                if(typeof step === 'string') {
+                    const label = step.trim();
+                    return label ? { id: 'step-' + index, label } : null;
+                }
+                if(typeof step === 'object') {
+                    const label = String(step.label || step.title || step.name || '').trim();
+                    if(!label) return null;
+                    return { id: String(step.id || ('step-' + index)).trim(), label };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    };
+
+    window.renderLoadingOverlay = function() {
+        const overlay = $('global-loading-overlay');
+        if(!overlay) return;
+        const state = window.loadingOverlayState || {};
+        if($('global-loading-title')) $('global-loading-title').innerText = state.title || '系統處理中';
+        if($('global-loading-message')) $('global-loading-message').innerText = state.message || '資料同步中，請稍候一下。';
+        const progressWrap = $('global-loading-progress');
+        const progressMeta = $('global-loading-progress-meta');
+        const stepsWrap = $('global-loading-steps');
+        const steps = Array.isArray(state.steps) ? state.steps : [];
+        const currentStep = Math.max(-1, Math.min(Number(state.currentStep), steps.length - 1));
+        if(progressWrap && progressMeta && stepsWrap) {
+            if(!steps.length) {
+                progressWrap.classList.add('hidden');
+                stepsWrap.innerHTML = '';
+            } else {
+                const safeCurrent = currentStep > -1 ? currentStep : 0;
+                progressMeta.innerText = '目前步驟 ' + (safeCurrent + 1) + ' / ' + steps.length;
+                stepsWrap.innerHTML = steps.map((step, index) => {
+                    const stateClass = index < safeCurrent
+                        ? ' is-done'
+                        : (index === safeCurrent ? ' is-active' : '');
+                    return (
+                        '<div class="loading-overlay-step' + stateClass + '">' +
+                            '<span class="loading-overlay-step-index">' + (index + 1) + '</span>' +
+                            '<span class="loading-overlay-step-label">' + window.escapeHtml(step.label) + '</span>' +
+                        '</div>'
+                    );
+                }).join('');
+                progressWrap.classList.remove('hidden');
+            }
+        }
+    };
+
+    window.showLoadingOverlay = function(message = '資料同步中，請稍候一下。', title = '系統處理中', options = {}) {
         const overlay = $('global-loading-overlay');
         if(!overlay) return;
         window.loadingOverlayDepth = (window.loadingOverlayDepth || 0) + 1;
-        if($('global-loading-title')) $('global-loading-title').innerText = title;
-        if($('global-loading-message')) $('global-loading-message').innerText = message;
+        const normalizedSteps = window.normalizeLoadingOverlaySteps(options && options.steps);
+        const requestedStep = Number(options && options.currentStep);
+        window.loadingOverlayState = {
+            title,
+            message,
+            steps: normalizedSteps,
+            currentStep: normalizedSteps.length
+                ? Math.max(0, Math.min(Number.isFinite(requestedStep) ? requestedStep : 0, normalizedSteps.length - 1))
+                : -1
+        };
+        window.renderLoadingOverlay();
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
+    };
+
+    window.updateLoadingOverlay = function(options = {}) {
+        const overlay = $('global-loading-overlay');
+        if(!overlay) return;
+        const previousState = window.loadingOverlayState || {};
+        const nextSteps = Object.prototype.hasOwnProperty.call(options, 'steps')
+            ? window.normalizeLoadingOverlaySteps(options.steps)
+            : (Array.isArray(previousState.steps) ? previousState.steps : []);
+        const requestedStep = Object.prototype.hasOwnProperty.call(options, 'currentStep')
+            ? Number(options.currentStep)
+            : previousState.currentStep;
+        window.loadingOverlayState = {
+            title: Object.prototype.hasOwnProperty.call(options, 'title') ? (options.title || '系統處理中') : (previousState.title || '系統處理中'),
+            message: Object.prototype.hasOwnProperty.call(options, 'message') ? (options.message || '資料同步中，請稍候一下。') : (previousState.message || '資料同步中，請稍候一下。'),
+            steps: nextSteps,
+            currentStep: nextSteps.length
+                ? Math.max(0, Math.min(Number.isFinite(requestedStep) ? requestedStep : 0, nextSteps.length - 1))
+                : -1
+        };
+        window.renderLoadingOverlay();
         overlay.classList.remove('hidden');
         overlay.style.display = 'flex';
     };
@@ -192,6 +298,13 @@
         if(force) window.loadingOverlayDepth = 0;
         else window.loadingOverlayDepth = Math.max((window.loadingOverlayDepth || 0) - 1, 0);
         if(!overlay || window.loadingOverlayDepth > 0) return;
+        window.loadingOverlayState = {
+            title: '系統處理中',
+            message: '資料同步中，請稍候一下。',
+            steps: [],
+            currentStep: -1
+        };
+        window.renderLoadingOverlay();
         overlay.classList.add('hidden');
         overlay.style.display = 'none';
     };
@@ -200,10 +313,18 @@
         return (!p || p.length <= 6) ? p : p.substring(0, 2) + "****" + p.substring(p.length - 4); 
     };
 
-    window.normalizeTeacherEmpId = function(value) {
+    window.normalizeBorrowProfileAsciiInput = function(value) {
         return String(value || '')
-            .trim()
+            .replace(/[０-９Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+            .replace(/[‐‑‒–—―－﹣]/g, '-')
+            .replace(/＿/g, '_')
             .replace(/\s+/g, '')
+            .trim()
+            .toUpperCase();
+    };
+
+    window.normalizeTeacherEmpId = function(value) {
+        return window.normalizeBorrowProfileAsciiInput(value)
             .toLowerCase();
     };
 
@@ -215,31 +336,143 @@
         return String(student && (student.className || student.class || student.department) || '').trim();
     };
 
-    window.normalizeContactPhone = function(value) {
-        const raw = String(value ?? '').trim();
-        if(!raw) return '';
-        const digits = raw.replace(/\D/g, '');
-        if(/^9\d{8}$/.test(digits)) return `0${digits}`;
-        if(/^09\d{8}$/.test(digits) && !raw.startsWith('0')) return digits;
-        return raw;
+    window.getTeacherPhone = function(teacher) {
+        return String(teacher && (teacher.phone || teacher.tel || teacher['電話'] || teacher['聯絡電話']) || '').trim();
+    };
+
+    window.getTeacherEmail = function(teacher) {
+        return String(teacher && (teacher.email || teacher.mail || teacher['Email'] || teacher['EMAIL'] || teacher['email'] || teacher['電子郵件']) || '').trim();
+    };
+
+    window.normalizeTeacherRecord = function(teacher) {
+        const source = teacher && typeof teacher === 'object' ? teacher : {};
+        return {
+            empId: String(source.empId || source.id || source['職號'] || '').trim(),
+            name: String(source.name || source['姓名'] || '').trim(),
+            department: String(source.department || source['系所'] || source['單位'] || '漫畫系').trim() || '漫畫系',
+            position: String(source.position || source['職位'] || '專任').trim() || '專任',
+            identity: String(source.identity || source['身分'] || '一般教師').trim() || '一般教師',
+            phone: window.getTeacherPhone(source),
+            email: window.getTeacherEmail(source),
+            scheduleKey: String(source.scheduleKey || '').trim()
+        };
+    };
+
+    window.mergeTeacherRecordsPreferRich = function(primaryList, fallbackList) {
+        const result = [];
+        const normalize = typeof window.normalizeTeacherRecord === 'function'
+            ? window.normalizeTeacherRecord
+            : function(item) { return item && typeof item === 'object' ? { ...item } : {}; };
+        const findIndex = function(list, record) {
+            const normalizedEmpId = window.normalizeBorrowProfileCode ? window.normalizeBorrowProfileCode(record && record.empId) : String(record && record.empId || '').trim().toLowerCase();
+            const normalizedScheduleKey = String(record && record.scheduleKey || '').trim();
+            const normalizedName = String(record && record.name || '').trim();
+            return list.findIndex(item => {
+                const itemEmpId = window.normalizeBorrowProfileCode ? window.normalizeBorrowProfileCode(item && item.empId) : String(item && item.empId || '').trim().toLowerCase();
+                const itemScheduleKey = String(item && item.scheduleKey || '').trim();
+                const itemName = String(item && item.name || '').trim();
+                return (!!normalizedEmpId && normalizedEmpId === itemEmpId)
+                    || (!!normalizedScheduleKey && normalizedScheduleKey === itemScheduleKey)
+                    || (!!normalizedName && normalizedName === itemName);
+            });
+        };
+        const mergeIntoResult = function(sourceList) {
+            (Array.isArray(sourceList) ? sourceList : []).map(normalize).filter(item => item.empId || item.name || item.scheduleKey).forEach(item => {
+                const existingIndex = findIndex(result, item);
+                if(existingIndex === -1) {
+                    result.push(item);
+                    return;
+                }
+                const existing = result[existingIndex] || {};
+                result[existingIndex] = {
+                    empId: item.empId || existing.empId || '',
+                    name: item.name || existing.name || '',
+                    department: item.department || existing.department || '漫畫系',
+                    position: item.position || existing.position || '專任',
+                    identity: item.identity || existing.identity || '一般教師',
+                    phone: item.phone || existing.phone || '',
+                    email: item.email || existing.email || '',
+                    scheduleKey: item.scheduleKey || existing.scheduleKey || ''
+                };
+            });
+        };
+        mergeIntoResult(fallbackList);
+        mergeIntoResult(primaryList);
+        return result;
+    };
+
+    window.readPrivateTeacherListCache = function() {
+        try {
+            const raw = localStorage.getItem(window.privateTeacherListStorageKey || 'teacherListPrivate');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return (Array.isArray(parsed) ? parsed : [])
+                .map(window.normalizeTeacherRecord)
+                .filter(item => item.empId || item.name || item.scheduleKey);
+        } catch(error) {
+            return [];
+        }
+    };
+
+    window.cachePrivateTeacherList = function(list) {
+        try {
+            const normalized = (Array.isArray(list) ? list : [])
+                .map(window.normalizeTeacherRecord)
+                .filter(item => item.empId || item.name || item.scheduleKey);
+            localStorage.setItem(window.privateTeacherListStorageKey || 'teacherListPrivate', JSON.stringify(normalized));
+        } catch(error) {}
+    };
+
+    window.getTeacherListForCloudSave = function() {
+        const currentList = (window.teacherList || []).map(window.normalizeTeacherRecord);
+        const cachedList = typeof window.readPrivateTeacherListCache === 'function'
+            ? window.readPrivateTeacherListCache()
+            : [];
+        return typeof window.mergeTeacherRecordsPreferRich === 'function'
+            ? window.mergeTeacherRecordsPreferRich(currentList, cachedList)
+            : currentList;
     };
 
     window.normalizeStudentRecord = function(student) {
         const source = student && typeof student === 'object' ? student : {};
         return {
-            name: String(source.name || '').trim(),
-            studentId: String(source.studentId || source.id || '').trim(),
-            className: window.getStudentClassName(source),
-            phone: window.normalizeContactPhone(source.phone || ''),
-            email: String(source.email || '').trim()
+            name: String(source.name || source['姓名'] || '').trim(),
+            studentId: String(source.studentId || source.id || source['學號'] || '').trim(),
+            className: window.getStudentClassName({
+                className: source.className,
+                class: source.class,
+                department: source.department,
+                '班級': source['班級']
+            }),
+            phone: String(source.phone || source.tel || source['電話'] || source['聯絡電話'] || '').trim(),
+            email: String(source.email || source.mail || source['Email'] || source['EMAIL'] || source['email'] || source['電子郵件'] || '').trim()
         };
+    };
+
+    window.readCachedStudentList = function() {
+        try {
+            const raw = localStorage.getItem('studentList');
+            const parsed = raw ? JSON.parse(raw) : [];
+            return (Array.isArray(parsed) ? parsed : [])
+                .map(window.normalizeStudentRecord)
+                .filter(item => item.studentId || item.name);
+        } catch(error) {
+            return [];
+        }
     };
 
     window.findBorrowProfileByCode = function(code) {
         const normalized = window.normalizeBorrowProfileCode(code);
         if(!normalized) return null;
-        const teacher = (window.teacherList || []).find(item => window.normalizeBorrowProfileCode(item && item.empId) === normalized);
-        const student = (window.studentList || []).map(window.normalizeStudentRecord).find(item => window.normalizeBorrowProfileCode(item.studentId) === normalized);
+        const teacher = (window.teacherList || []).map(window.normalizeTeacherRecord).find(item => window.normalizeBorrowProfileCode(item && item.empId) === normalized);
+        const liveStudents = (window.studentList || []).map(window.normalizeStudentRecord).filter(item => item.studentId || item.name);
+        const cachedStudents = typeof window.readCachedStudentList === 'function' ? window.readCachedStudentList() : [];
+        const mergedStudents = [...liveStudents];
+        cachedStudents.forEach(student => {
+            const existingIndex = mergedStudents.findIndex(item => window.normalizeBorrowProfileCode(item.studentId) === window.normalizeBorrowProfileCode(student.studentId));
+            if(existingIndex >= 0) mergedStudents[existingIndex] = { ...mergedStudents[existingIndex], ...student };
+            else mergedStudents.push(student);
+        });
+        const student = mergedStudents.find(item => window.normalizeBorrowProfileCode(item.studentId) === normalized);
         if(student) {
             return {
                 kind: 'student',
@@ -256,9 +489,9 @@
                 kind: 'teacher',
                 code: String(teacher.empId || '').trim(),
                 name: String(teacher.name || '').trim(),
-                phone: String(teacher.phone || '').trim(),
+                phone: window.getTeacherPhone(teacher),
                 unit: String(teacher.department || '漫畫系').trim(),
-                email: String(teacher.email || '').trim(),
+                email: window.getTeacherEmail(teacher),
                 raw: teacher
             };
         }
@@ -268,15 +501,15 @@
     window.findBorrowProfileByName = function(name) {
         const normalizedName = String(name || '').trim();
         if(!normalizedName) return null;
-        const teacher = (window.teacherList || []).find(item => String(item && item.name || '').trim() === normalizedName);
+        const teacher = (window.teacherList || []).map(window.normalizeTeacherRecord).find(item => String(item && item.name || '').trim() === normalizedName);
         if(teacher) {
             return {
                 kind: 'teacher',
                 code: String(teacher.empId || '').trim(),
                 name: String(teacher.name || '').trim(),
-                phone: String(teacher.phone || '').trim(),
+                phone: window.getTeacherPhone(teacher),
                 unit: String(teacher.department || '漫畫系').trim(),
-                email: String(teacher.email || '').trim(),
+                email: window.getTeacherEmail(teacher),
                 raw: teacher
             };
         }
@@ -378,14 +611,46 @@
     };
 
     window.formatEquipmentCell = function(eq, qty) { 
-        let b='', c=eq||''; 
-        if(c.includes('[預借教室]')){b='<span class="inline-flex items-center text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] font-bold mb-1"><i data-lucide="door-open" class="w-3 h-3 mr-1"></i> 教室</span>';c=c.replace('[預借教室]','').trim();} 
-        else if(c.includes('[展覽空間]')){b='<span class="inline-flex items-center text-pink-600 bg-pink-50 px-2 py-0.5 rounded text-[11px] font-bold mb-1"><i data-lucide="image" class="w-3 h-3 mr-1"></i> 展覽</span>';c=c.replace('[展覽空間]','').trim();} 
-        else if(c.includes('[鑰匙]')){b='<span class="inline-flex items-center text-teal-600 bg-teal-50 px-2 py-0.5 rounded text-[11px] font-bold mb-1"><i data-lucide="key" class="w-3 h-3 mr-1"></i> 鑰匙</span>';c=c.replace('[鑰匙]','').trim();} 
-        else{b='<span class="inline-flex items-center text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-[11px] font-bold mb-1"><i data-lucide="monitor-speaker" class="w-3 h-3 mr-1"></i> 設備</span>';} 
-        let dt=''; const accs=c.match(/\(\+(.*?)\)/g); 
-        if(accs) accs.forEach(a=>{ dt+='<span class="bg-gray-100 text-[10px] font-bold text-gray-500 px-1.5 py-0.5 rounded mr-1 mt-1 inline-block">' + a.replace(/[()]/g,'') + '</span>'; c=c.replace(a,'').trim(); }); 
-        return '<div class="flex-c items-start">' + b + '<div class="font-bold text-gray-800 text-[14px] mt-0.5">' + c + ' <span class="text-gray-400 font-medium text-[13px] ml-0.5">x' + (qty||1) + '</span></div>' + (dt?'<div class="flex flex-wrap mt-1">' + dt + '</div>':'') + '</div>'; 
+        let badgeHtml = '';
+        let badgeClass = 'equipment-type-chip is-equipment';
+        let badgeIcon = 'monitor-speaker';
+        let badgeText = '設備';
+        let content = String(eq || '').trim();
+
+        if(content.includes('[預借教室]')) {
+            badgeClass = 'equipment-type-chip is-classroom';
+            badgeIcon = 'door-open';
+            badgeText = '教室';
+            content = content.replace('[預借教室]', '').trim();
+        } else if(content.includes('[展覽空間]')) {
+            badgeClass = 'equipment-type-chip is-exhibition';
+            badgeIcon = 'image';
+            badgeText = '展覽';
+            content = content.replace('[展覽空間]', '').trim();
+        } else if(content.includes('[鑰匙]')) {
+            badgeClass = 'equipment-type-chip is-key';
+            badgeIcon = 'key';
+            badgeText = '鑰匙';
+            content = content.replace('[鑰匙]', '').trim();
+        }
+
+        badgeHtml = '<span class="' + badgeClass + '"><i data-lucide="' + badgeIcon + '" class="w-3 h-3"></i>' + badgeText + '</span>';
+
+        let addonHtml = '';
+        const addons = content.match(/\(\+(.*?)\)/g);
+        if(addons) {
+            addons.forEach(addon => {
+                addonHtml += '<span class="equipment-addon-chip">' + window.escapeHtml(addon.replace(/[()]/g, '')) + '</span>';
+                content = content.replace(addon, '').trim();
+            });
+        }
+
+        return '' +
+            '<div class="equipment-cell">' +
+                badgeHtml +
+                '<div class="equipment-title-line">' + window.escapeHtml(content) + '<span class="equipment-qty">x' + (qty || 1) + '</span></div>' +
+                (addonHtml ? '<div class="equipment-addon-list">' + addonHtml + '</div>' : '') +
+            '</div>';
     };
 
     window.formatTimeSplit = function(timeStr) {
