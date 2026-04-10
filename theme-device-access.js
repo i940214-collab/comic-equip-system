@@ -626,11 +626,11 @@ window.installNetworkGuard = function() {
 
 // --- 資料讀取 Helper ---
 window.getId = i => i?.ID || i?.id || '';
-window.getBorrower = i => i?.borrower || i?.借用人 || '';
-window.getEquip = i => i?.equipment || i?.設備名稱 || '';
-window.getStatus = i => i?.status || i?.狀態 || '';
-window.getTime = i => i?.time || i?.借用時間 || '';
-window.getExpDate = i => i?.expectedReturnDate || i?.預計歸還日期 || '';
+window.getBorrower = i => i?.borrower || i?.借用人 || i?.借用人資訊 || '';
+window.getEquip = i => i?.equipment || i?.設備名稱 || i?.借用物件與細節 || i?.借用設備清單 || '';
+window.getStatus = i => i?.status || i?.狀態 || i?.借用狀態 || '';
+window.getTime = i => i?.time || i?.借用時間 || i?.申請時間 || '';
+window.getExpDate = i => i?.expectedReturnDate || i?.預計歸還日期 || i?.預計歸還 || '';
 window.getRetTime = i => i?.returningTime || i?.returnTime || i?.returnedAt || i?.歸還時間 || i?.實際歸還時間 || i?.實際歸還 || '';
 window.getQty = i => i?.quantity || i?.數量 || 1;
 window.getRequestRef = i => i?.requestRef || i?.申請參照 || '';

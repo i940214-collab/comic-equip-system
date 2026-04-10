@@ -234,7 +234,8 @@
                 stepsWrap.innerHTML = '';
             } else {
                 const safeCurrent = currentStep > -1 ? currentStep : 0;
-                progressMeta.innerText = '目前步驟 ' + (safeCurrent + 1) + ' / ' + steps.length;
+                const currentLabel = steps[safeCurrent] && steps[safeCurrent].label ? (' · ' + steps[safeCurrent].label) : '';
+                progressMeta.innerText = '目前步驟 ' + (safeCurrent + 1) + ' / ' + steps.length + currentLabel;
                 stepsWrap.innerHTML = steps.map((step, index) => {
                     const stateClass = index < safeCurrent
                         ? ' is-done'
@@ -422,6 +423,49 @@
         } catch(error) {}
     };
 
+    window.cacheBorrowProfileRecord = function(profile) {
+        if(!profile || !profile.code) return false;
+        const kind = String(profile.kind || '').trim().toLowerCase();
+        if(kind === 'student') {
+            const normalizedStudent = window.normalizeStudentRecord({
+                name: profile.name || '',
+                studentId: profile.code || '',
+                className: profile.unit || '',
+                phone: profile.phone || '',
+                email: profile.email || ''
+            });
+            const cachedStudents = typeof window.readCachedStudentList === 'function'
+                ? window.readCachedStudentList()
+                : [];
+            const targetIndex = cachedStudents.findIndex(item => window.normalizeBorrowProfileCode(item.studentId) === window.normalizeBorrowProfileCode(normalizedStudent.studentId));
+            if(targetIndex >= 0) cachedStudents[targetIndex] = { ...cachedStudents[targetIndex], ...normalizedStudent };
+            else cachedStudents.push(normalizedStudent);
+            try {
+                localStorage.setItem('studentList', JSON.stringify(cachedStudents));
+            } catch(error) {}
+            return true;
+        }
+        if(kind === 'teacher') {
+            const normalizedTeacher = window.normalizeTeacherRecord({
+                empId: profile.code || '',
+                name: profile.name || '',
+                department: profile.unit || '',
+                phone: profile.phone || '',
+                email: profile.email || '',
+                ...(profile.raw && typeof profile.raw === 'object' ? profile.raw : {})
+            });
+            const cachedTeachers = typeof window.readPrivateTeacherListCache === 'function'
+                ? window.readPrivateTeacherListCache()
+                : [];
+            const targetIndex = cachedTeachers.findIndex(item => window.normalizeBorrowProfileCode(item.empId) === window.normalizeBorrowProfileCode(normalizedTeacher.empId));
+            if(targetIndex >= 0) cachedTeachers[targetIndex] = { ...cachedTeachers[targetIndex], ...normalizedTeacher };
+            else cachedTeachers.push(normalizedTeacher);
+            if(typeof window.cachePrivateTeacherList === 'function') window.cachePrivateTeacherList(cachedTeachers);
+            return true;
+        }
+        return false;
+    };
+
     window.getTeacherListForCloudSave = function() {
         const currentList = (window.teacherList || []).map(window.normalizeTeacherRecord);
         const cachedList = typeof window.readPrivateTeacherListCache === 'function'
@@ -463,7 +507,12 @@
     window.findBorrowProfileByCode = function(code) {
         const normalized = window.normalizeBorrowProfileCode(code);
         if(!normalized) return null;
-        const teacher = (window.teacherList || []).map(window.normalizeTeacherRecord).find(item => window.normalizeBorrowProfileCode(item && item.empId) === normalized);
+        const liveTeachers = (window.teacherList || []).map(window.normalizeTeacherRecord).filter(item => item.empId || item.name || item.scheduleKey);
+        const cachedTeachers = typeof window.readPrivateTeacherListCache === 'function' ? window.readPrivateTeacherListCache() : [];
+        const mergedTeachers = typeof window.mergeTeacherRecordsPreferRich === 'function'
+            ? window.mergeTeacherRecordsPreferRich(liveTeachers, cachedTeachers)
+            : [...liveTeachers, ...cachedTeachers];
+        const teacher = mergedTeachers.find(item => window.normalizeBorrowProfileCode(item && item.empId) === normalized);
         const liveStudents = (window.studentList || []).map(window.normalizeStudentRecord).filter(item => item.studentId || item.name);
         const cachedStudents = typeof window.readCachedStudentList === 'function' ? window.readCachedStudentList() : [];
         const mergedStudents = [...liveStudents];
