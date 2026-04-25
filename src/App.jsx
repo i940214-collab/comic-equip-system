@@ -307,6 +307,118 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
 
 const getLocalStatusKey = (projectId, screenId) => `projection-display-status-${projectId}-${screenId}`;
 
+const getSpanPreviewStyle = (screenId, bezelGap = 0) => {
+  const scaledGap = Math.max(0, Math.round((Number(bezelGap) || 0) * 0.18));
+  return {
+    left: screenId === '1' ? '0px' : screenId === '2' ? `calc(-100% - ${scaledGap}px)` : `calc(-200% - ${scaledGap * 2}px)`,
+    width: `calc(300% + ${scaledGap * 2}px)`,
+    height: '100%',
+  };
+};
+
+function SpanModePreviewGrid({ scene }) {
+  const segmentLabels = {
+    '1': '左段',
+    '2': '中段',
+    '3': '右段',
+  };
+  const hasContent = Boolean(scene?.spanContent);
+
+  const renderSpanPreviewContent = (screenId) => {
+    if (!hasContent) {
+      return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/45 gap-2">
+          {scene?.spanType === 'text' ? <Type size={24} /> : scene?.spanType === 'image' ? <ImageIcon size={24} /> : <Play size={24} />}
+          <span className="text-xs font-medium">尚未設定內容</span>
+        </div>
+      );
+    }
+
+    const sharedStyle = {
+      position: 'absolute',
+      top: 0,
+      ...getSpanPreviewStyle(screenId, scene?.bezelGap),
+    };
+
+    if (scene?.spanType === 'image') {
+      return (
+        <div style={sharedStyle}>
+          <img src={scene.spanContent} alt={`${scene.name || 'Video Wall'} 預覽`} className="w-full h-full object-cover" />
+        </div>
+      );
+    }
+
+    if (scene?.spanType === 'video') {
+      return (
+        <>
+          <div style={sharedStyle}>
+            <video
+              src={scene.spanContent}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="w-full h-full object-cover opacity-80"
+            />
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-black/45 px-2 py-1 text-[10px] font-semibold text-white/85">
+            <Play size={11} />
+            <span>Video Wall</span>
+          </div>
+        </>
+      );
+    }
+
+    if (scene?.spanType === 'text') {
+      return (
+        <div className="absolute inset-0 overflow-hidden">
+          <div style={sharedStyle} className="flex items-center justify-center px-4">
+            <div
+              className="font-black text-white text-center leading-none whitespace-nowrap drop-shadow-2xl"
+              style={{ fontSize: 'clamp(2.25rem, 8vw, 6rem)' }}
+            >
+              {scene.spanContent}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="px-6 pb-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-700">三螢幕裁切預覽</h3>
+          <p className="text-xs text-slate-400 mt-1">模擬每台螢幕實際會看到的範圍，已套用邊框補償。</p>
+        </div>
+        <span className="text-[11px] font-medium text-slate-400">
+          {getContentTypeLabel(scene?.spanType)} · Bezel {scene?.bezelGap || 0}px
+        </span>
+      </div>
+
+      <div className="grid xl:grid-cols-3 gap-4">
+        {SCREEN_IDS.map((screenId) => (
+          <div key={screenId} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <span className="font-medium text-sm text-slate-700">螢幕 {screenId}</span>
+              <span className="text-[10px] font-semibold text-slate-400">{segmentLabels[screenId]}</span>
+            </div>
+            <div className="aspect-video bg-slate-950 relative overflow-hidden">
+              {renderSpanPreviewContent(screenId)}
+              <div className="absolute inset-0 ring-1 ring-inset ring-white/10 pointer-events-none" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState('select'); 
@@ -991,6 +1103,8 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                        </div>
                      </div>
                   </div>
+
+                  <SpanModePreviewGrid scene={activeScene} />
                 </div>
               ) : (
                 <div className="grid xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
