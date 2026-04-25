@@ -96,6 +96,10 @@ const OVERLAY_EFFECTS = [
   { id: 'gold', label: '金幣雨' },
 ];
 
+const SCREEN_IDS = ['1', '2', '3'];
+const HEARTBEAT_STALE_MS = 12000;
+const HEARTBEAT_INTERVAL_MS = 5000;
+
 const DEFAULT_SCENE = {
   id: 'default-1',
   name: '開場畫面',
@@ -147,6 +151,70 @@ const normalizeStaticAssets = (items) => {
     }));
 };
 
+const formatSeconds = (seconds = 0) => {
+  const safeSeconds = Math.max(0, Math.ceil(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return minutes > 0 ? `${minutes}:${String(remainder).padStart(2, '0')}` : `${remainder}s`;
+};
+
+const getContentTypeLabel = (type) => CONTENT_TYPES.find(item => item.id === type)?.label || type || '未設定';
+
+const getPlaybackSnapshot = (globalState, now = Date.now()) => {
+  const timeline = Array.isArray(globalState.timeline) && globalState.timeline.length > 0 ? globalState.timeline : [DEFAULT_SCENE];
+  const totalDuration = timeline.reduce((acc, scene) => acc + (Number(scene?.duration) || 10), 0);
+  const paused = !globalState.isPlaying || globalState.standbyMode || totalDuration <= 0;
+
+  if (paused) {
+    const scene = timeline[0] || DEFAULT_SCENE;
+    return {
+      scene,
+      sceneIndex: 0,
+      totalScenes: timeline.length,
+      totalDuration,
+      sceneElapsed: 0,
+      sceneRemaining: Number(scene?.duration) || 10,
+      cycleElapsed: 0,
+      sceneProgress: 0,
+      cycleProgress: 0,
+    };
+  }
+
+  const elapsedSecs = Math.max(0, (now - (globalState.startTime || now)) / 1000);
+  const cycleElapsed = elapsedSecs % totalDuration;
+  let accumulated = 0;
+  let sceneIndex = 0;
+  let sceneStart = 0;
+
+  for (let i = 0; i < timeline.length; i++) {
+    const duration = Number(timeline[i]?.duration) || 10;
+    if (cycleElapsed < accumulated + duration) {
+      sceneIndex = i;
+      sceneStart = accumulated;
+      break;
+    }
+    accumulated += duration;
+  }
+
+  const scene = timeline[sceneIndex] || timeline[0] || DEFAULT_SCENE;
+  const sceneDuration = Number(scene?.duration) || 10;
+  const sceneElapsed = Math.max(0, cycleElapsed - sceneStart);
+
+  return {
+    scene,
+    sceneIndex,
+    totalScenes: timeline.length,
+    totalDuration,
+    sceneElapsed,
+    sceneRemaining: Math.max(0, sceneDuration - sceneElapsed),
+    cycleElapsed,
+    sceneProgress: Math.min(100, (sceneElapsed / sceneDuration) * 100),
+    cycleProgress: Math.min(100, (cycleElapsed / totalDuration) * 100),
+  };
+};
+
+const getLocalStatusKey = (projectId, screenId) => `projection-display-status-${projectId}-${screenId}`;
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState('select'); 
@@ -154,6 +222,7 @@ export default function App() {
   const [globalState, setGlobalState] = useState(DEFAULT_STATE);
   const [staticAssets, setStaticAssets] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [displayStatuses, setDisplayStatuses] = useState({});
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [isDbMissing, setIsDbMissing] = useState(false);
@@ -289,6 +358,43 @@ export default function App() {
     return () => { clearTimeout(dataTimeout); unsubState(); unsubAssets(); };
   }, [user, localMode]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    if (!localMode && db) {
+      const statusCol = collection(db, 'artifacts', appId, 'public', 'data', 'displayStatus');
+      return onSnapshot(statusCol, (snap) => {
+        const nextStatuses = {};
+        snap.forEach(d => {
+          nextStatuses[d.id] = { id: d.id, ...d.data() };
+        });
+        setDisplayStatuses(nextStatuses);
+      }, (err) => console.log("Display status listener error:", err));
+    }
+
+    const readLocalStatuses = () => {
+      const nextStatuses = {};
+      SCREEN_IDS.forEach(id => {
+        const raw = localStorage.getItem(getLocalStatusKey(appId, id));
+        if (!raw) return;
+        try {
+          nextStatuses[id] = JSON.parse(raw);
+        } catch (error) {
+          console.warn("Invalid local display status:", error);
+        }
+      });
+      setDisplayStatuses(nextStatuses);
+    };
+
+    readLocalStatuses();
+    const interval = setInterval(readLocalStatuses, 2000);
+    window.addEventListener('storage', readLocalStatuses);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', readLocalStatuses);
+    };
+  }, [user, localMode]);
+
   const updateGlobalState = async (updates) => {
     if (!user) return;
     if (localMode) {
@@ -391,8 +497,8 @@ export default function App() {
 
   // --- 各模式組件渲染 ---
   if (viewMode === 'chat-client') return <ChatClientView globalState={globalState} updateGlobalState={updateGlobalState} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} db={db} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
   
   return null;
 }
@@ -453,14 +559,29 @@ function ChatClientView({ globalState, updateGlobalState, onExit }) {
 // ==========================================
 // 子組件：導演中控台
 // ==========================================
-function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, onExit }) {
+function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, displayStatuses, onExit }) {
   const { timeline, isPlaying, marquee, standbyMode, bgm, bulletChats, overlayEffect, stats } = globalState;
   const [selectedSceneId, setSelectedSceneId] = useState(timeline[0]?.id || null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [inputTarget, setInputTarget] = useState(null); 
+  const [now, setNow] = useState(Date.now());
 
   const activeScene = timeline.find(s => s.id === selectedSceneId) || timeline[0] || DEFAULT_SCENE;
+  const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
+  const connectedScreens = useMemo(() => SCREEN_IDS.map(id => {
+    const status = displayStatuses?.[id] || {};
+    const lastSeen = Number(status.lastSeen) || 0;
+    const online = lastSeen > 0 && now - lastSeen < HEARTBEAT_STALE_MS;
+    const ageSeconds = lastSeen > 0 ? Math.max(0, Math.round((now - lastSeen) / 1000)) : null;
+    return { id, status, online, ageSeconds };
+  }), [displayStatuses, now]);
+  const onlineCount = connectedScreens.filter(screen => screen.online).length;
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, []);
 
   const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: Date.now() });
   const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode });
@@ -549,6 +670,82 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
           <div className="w-px h-6 bg-slate-700 mx-1" />
           <button onClick={() => triggerFx('applause')} className="bg-slate-700 hover:bg-slate-600 text-xs px-2 py-1.5 rounded font-medium transition-colors">👏 掌聲</button>
           <button onClick={() => triggerFx('bell')} className="bg-slate-700 hover:bg-slate-600 text-xs px-2 py-1.5 rounded font-medium transition-colors">🔔 提示</button>
+        </div>
+      </div>
+
+      <div className="bg-white border-b border-slate-200 px-8 py-4">
+        <div className="max-w-[1800px] mx-auto grid xl:grid-cols-[1.25fr_1fr] gap-4">
+          <section className="border border-slate-200 bg-slate-50 rounded-xl p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${isPlaying && !standbyMode ? 'bg-emerald-500 animate-pulse' : standbyMode ? 'bg-indigo-500' : 'bg-slate-300'}`} />
+                <div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">播放監控</div>
+                  <div className="text-lg font-semibold text-slate-900">
+                    {standbyMode ? '休眠模式' : isPlaying ? `第 ${playback.sceneIndex + 1}/${playback.totalScenes} 場：${playback.scene?.name || '未命名場景'}` : '暫停中'}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">本場剩餘</div>
+                <div className="text-3xl font-black text-slate-900 tabular-nums">{formatSeconds(playback.sceneRemaining)}</div>
+              </div>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3 text-sm">
+              <div className="bg-white border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">本場進度</div>
+                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${playback.sceneProgress}%` }} />
+                </div>
+                <div className="mt-2 text-slate-500 tabular-nums">{formatSeconds(playback.sceneElapsed)} / {formatSeconds(playback.scene?.duration || 0)}</div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">整輪進度</div>
+                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${playback.cycleProgress}%` }} />
+                </div>
+                <div className="mt-2 text-slate-500 tabular-nums">{formatSeconds(playback.cycleElapsed)} / {formatSeconds(playback.totalDuration)}</div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded-lg p-3">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">目前內容</div>
+                <div className="mt-2 text-slate-700 font-medium">
+                  {playback.scene?.isSpanMode ? `全景 ${getContentTypeLabel(playback.scene?.spanType)}` : '三螢幕獨立播放'}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">{isPlaying ? '播放中' : '按下播放後會從第 1 場重新同步'}</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="border border-slate-200 bg-slate-50 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">螢幕連線</div>
+                <div className="text-lg font-semibold text-slate-900">{onlineCount}/3 在線</div>
+              </div>
+              {localMode && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-1 rounded">本機模式</span>}
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              {connectedScreens.map(({ id, status, online, ageSeconds }) => (
+                <div key={id} className={`bg-white border rounded-lg p-3 ${online ? 'border-emerald-200' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MonitorPlay size={16} className={online ? 'text-emerald-600' : 'text-slate-300'} />
+                      <span className="font-bold text-slate-800">螢幕 {id}</span>
+                    </div>
+                    <span className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+                  </div>
+                  <div className={`mt-2 text-xs font-bold ${online ? 'text-emerald-700' : 'text-slate-400'}`}>
+                    {online ? '已連線' : '未連線'}
+                    {ageSeconds !== null && <span className="font-medium text-slate-400"> · {ageSeconds}s 前</span>}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500 truncate">{status.sceneName || '尚無回報場景'}</div>
+                  <div className="mt-1 text-[11px] text-slate-400 truncate">
+                    {status.audioUnlocked === false ? '等待顯示端點擊啟動' : getContentTypeLabel(status.contentType)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
 
@@ -921,7 +1118,7 @@ function OverlayEffects({ type }) {
 // ==========================================
 // 子組件：顯示端螢幕
 // ==========================================
-function DisplayScreen({ id, globalState, onExit }) {
+function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const { timeline = [DEFAULT_SCENE], isPlaying = false, startTime = Date.now(), marquee, standbyMode, bgm, fxTrigger, bulletChats, overlayEffect } = globalState;
   const [currentScene, setCurrentScene] = useState(timeline[0] || DEFAULT_SCENE);
   const cameraVideoRef = useRef(null);
@@ -958,6 +1155,38 @@ function DisplayScreen({ id, globalState, onExit }) {
     animationFrameId = requestAnimationFrame(calculateCurrentScene);
     return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
   }, [isPlaying, startTime, timeline, standbyMode]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const writeHeartbeat = () => {
+      const screenData = currentScene?.screens?.[id] || { type: currentScene?.spanType || 'unknown' };
+      const payload = {
+        screenId: id,
+        lastSeen: Date.now(),
+        sceneId: currentScene?.id || '',
+        sceneName: currentScene?.name || '未命名場景',
+        contentType: currentScene?.isSpanMode ? currentScene?.spanType : screenData.type,
+        isSpanMode: Boolean(currentScene?.isSpanMode),
+        isPlaying,
+        standbyMode,
+        audioUnlocked,
+        location: window.location.href,
+      };
+
+      if (!localMode && db) {
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), payload, { merge: true })
+          .catch(error => console.warn("Display heartbeat failed:", error));
+        return;
+      }
+
+      localStorage.setItem(getLocalStatusKey(appId, id), JSON.stringify(payload));
+    };
+
+    writeHeartbeat();
+    const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(heartbeatTimer);
+  }, [id, currentScene, isPlaying, standbyMode, audioUnlocked, db, appId, localMode]);
 
   useEffect(() => {
     let stream = null;
