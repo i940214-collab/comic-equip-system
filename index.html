@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>展覽播控系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.25.7/babel.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+          "firebase/app": "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js",
+          "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js",
+          "firebase/storage": "https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js",
+          "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js",
+          "lucide-react": "https://esm.sh/lucide-react@0.468.0?external=react"
+        }
+      }
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      @keyframes fallback-fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+
+      @keyframes fallback-zoom-in {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes fallback-slide-up {
+        from { opacity: 0; transform: translateY(100%); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes fallback-slide-left {
+        from { opacity: 0; transform: translateX(100%); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      .animate-in { animation-duration: 300ms; animation-fill-mode: both; }
+      .fade-in { animation-name: fallback-fade-in; }
+      .zoom-in,
+      .zoom-in-50,
+      .zoom-in-95 { animation-name: fallback-zoom-in; }
+      .slide-in-from-bottom-full,
+      .slide-in-from-bottom-10 { animation-name: fallback-slide-up; }
+      .slide-in-from-right-full { animation-name: fallback-slide-left; }
+      .duration-1000 { animation-duration: 1000ms; }
+      .duration-300 { animation-duration: 300ms; }
+      .duration-200 { animation-duration: 200ms; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="flex h-screen items-center justify-center bg-slate-900 text-slate-300 font-sans">
+        正在載入展覽播控系統...
+      </div>
+    </div>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+
+      const appSourceUrl = new URL('./src/App.jsx', window.location.href);
+      const appSource = await fetch(appSourceUrl).then((response) => {
+        if (!response.ok) {
+          throw new Error(`無法讀取 ${appSourceUrl.pathname}`);
+        }
+        return response.text();
+      });
+
+      const transformed = Babel.transform(appSource, {
+        filename: 'App.jsx',
+        presets: [['react', { runtime: 'classic' }]],
+        sourceType: 'module',
+      }).code;
+
+      const blobUrl = URL.createObjectURL(new Blob([transformed], { type: 'text/javascript' }));
+      const { default: App } = await import(blobUrl);
+
+      createRoot(document.getElementById('root')).render(
+        React.createElement(React.StrictMode, null, React.createElement(App)),
+      );
+    </script>
+  </body>
+</html>
