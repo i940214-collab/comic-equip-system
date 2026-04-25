@@ -99,6 +99,98 @@ const OVERLAY_EFFECTS = [
 const SCREEN_IDS = ['1', '2', '3'];
 const HEARTBEAT_STALE_MS = 12000;
 const HEARTBEAT_INTERVAL_MS = 5000;
+const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+const INLINE_IMAGE_MAX_DIMENSION = 1600;
+
+const getStringBytes = (value) => new TextEncoder().encode(value).length;
+
+const loadImageElement = (file) => new Promise((resolve, reject) => {
+  const imageUrl = URL.createObjectURL(file);
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(imageUrl);
+    resolve(image);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(imageUrl);
+    reject(new Error('圖片讀取失敗，請換一張圖片試試看。'));
+  };
+  image.src = imageUrl;
+});
+
+const compressImageForFirestore = async (file) => {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('目前只有圖片可以在沒有 Firebase Storage 時直接上傳。影片請改用「貼上網址」。');
+  }
+
+  const image = await loadImageElement(file);
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('瀏覽器無法處理這張圖片。');
+
+  const draw = (maxDimension, quality) => {
+    const largestSide = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height);
+    const scale = Math.min(1, maxDimension / largestSide);
+    const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+
+  let maxDimension = INLINE_IMAGE_MAX_DIMENSION;
+  let quality = 0.84;
+  let dataUrl = draw(maxDimension, quality);
+
+  while (getStringBytes(dataUrl) > INLINE_IMAGE_MAX_BYTES && maxDimension > 640) {
+    if (quality > 0.52) {
+      quality = Math.max(0.52, quality - 0.08);
+    } else {
+      maxDimension = Math.floor(maxDimension * 0.82);
+      quality = 0.78;
+    }
+    dataUrl = draw(maxDimension, quality);
+  }
+
+  if (getStringBytes(dataUrl) > INLINE_IMAGE_MAX_BYTES) {
+    throw new Error('圖片太大，壓縮後仍無法同步。請改用較小圖片，或用「貼上網址」。');
+  }
+
+  return dataUrl;
+};
+
+const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((resolve, reject) => {
+  const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+  const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
+  const uploadTask = uploadBytesResumable(fileRef, file);
+  uploadTask.on('state_changed',
+    (snapshot) => onProgress(Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+    reject,
+    async () => {
+      try {
+        resolve(await getDownloadURL(uploadTask.snapshot.ref));
+      } catch (error) {
+        reject(error);
+      }
+    }
+  );
+});
+
+const getUploadErrorMessage = (error, fileType) => {
+  const message = error?.message || '';
+  if (message.includes('Not Found') || error?.code === 'storage/bucket-not-found') {
+    return fileType === 'image'
+      ? 'Firebase Storage 尚未啟用，已改用圖片壓縮同步。'
+      : 'Firebase Storage 尚未啟用，影片無法直接上傳。請改用「貼上網址」。';
+  }
+  if (message.includes('permission') || error?.code === 'storage/unauthorized') {
+    return 'Firebase Storage 規則沒有允許上傳。請改用「貼上網址」，或到 Firebase Console 開啟 Storage 權限。';
+  }
+  return message || '上傳失敗，請改用「貼上網址」或稍後再試。';
+};
 
 const DEFAULT_SCENE = {
   id: 'default-1',
@@ -1004,6 +1096,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   const [selectedFile, setSelectedFile] = useState(null);
   const [adding, setAdding] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadError, setUploadError] = useState('');
 
   const handleAddUrl = async () => {
     if (!newUrl || !newName) return;
@@ -1022,27 +1115,60 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   const handleUploadFile = async () => {
     if (!selectedFile) return;
     setAdding(true);
-    if (localMode) {
-      const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
-      setAssets(prev => [...prev, { id: Date.now().toString(), name: newName || selectedFile.name, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
+    setUploadError('');
+    setUploadProgress(4);
+    const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
+    const assetName = newName || selectedFile.name;
+
+    try {
+      if (localMode) {
+        setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
+        setSelectedFile(null);
+        setNewName('');
+        return;
+      }
+
+      let assetUrl = '';
+      let assetSource = 'firebase-storage';
+
+      if (storage) {
+        try {
+          assetUrl = await uploadAssetToStorage(storage, appId, selectedFile, setUploadProgress);
+        } catch (error) {
+          console.warn('Firebase Storage upload failed:', error);
+          if (fileType !== 'image') throw error;
+          assetSource = 'firestore-inline';
+          setUploadProgress(35);
+        }
+      } else if (fileType !== 'image') {
+        throw new Error('Firebase Storage 尚未啟用，影片無法直接上傳。請改用「貼上網址」。');
+      }
+
+      if (!assetUrl) {
+        setUploadProgress(55);
+        assetUrl = await compressImageForFirestore(selectedFile);
+        setUploadProgress(86);
+      }
+
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
+        name: assetName,
+        url: assetUrl,
+        type: fileType,
+        source: assetSource,
+        originalName: selectedFile.name,
+        originalSize: selectedFile.size,
+        createdAt: Date.now()
+      });
+      setUploadProgress(100);
       setSelectedFile(null);
       setNewName('');
+    } catch (error) {
+      console.error(error);
+      setUploadError(getUploadErrorMessage(error, fileType));
+    } finally {
       setAdding(false);
       setUploadProgress(null);
-      return;
     }
-    const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${selectedFile.name}`);
-    const uploadTask = uploadBytesResumable(fileRef, selectedFile);
-    uploadTask.on('state_changed', 
-      (snapshot) => setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100), 
-      (error) => { console.error(error); setAdding(false); setUploadProgress(null); }, 
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), { name: newName || selectedFile.name, url: downloadURL, type: fileType, createdAt: Date.now() });
-        setSelectedFile(null); setNewName(''); setAdding(false); setUploadProgress(null);
-      }
-    );
   };
 
   const handleDelete = async (id) => {
@@ -1068,13 +1194,17 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
             <button onClick={() => setActiveTab('url')} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all ${activeTab === 'url' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><Link2 size={16} /> 貼上網址</button>
           </div>
           {activeTab === 'upload' ? (
-            <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-              <input type="file" accept="video/mp4, image/jpeg, image/png, image/webp" onChange={e => setSelectedFile(e.target.files[0])} className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors" />
-              <input type="text" placeholder="自訂名稱" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1 px-3 py-2 rounded-xl outline-none text-sm font-medium border border-transparent focus:border-blue-100 transition-colors text-slate-800" />
-              <div className="flex flex-col w-24">
-                <button onClick={handleUploadFile} disabled={adding || !selectedFile} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 flex justify-center items-center gap-1 w-full hover:bg-blue-700 transition-colors"><UploadCloud size={16}/> 上傳</button>
-                {uploadProgress !== null && <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+                <input type="file" accept="video/mp4, image/jpeg, image/png, image/webp" onChange={e => { setSelectedFile(e.target.files[0]); setUploadError(''); setUploadProgress(null); }} className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors" />
+                <input type="text" placeholder="自訂名稱" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1 px-3 py-2 rounded-xl outline-none text-sm font-medium border border-transparent focus:border-blue-100 transition-colors text-slate-800" />
+                <div className="flex flex-col w-28">
+                  <button onClick={handleUploadFile} disabled={adding || !selectedFile} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 flex justify-center items-center gap-1 w-full hover:bg-blue-700 transition-colors"><UploadCloud size={16}/> {adding ? '處理中' : '上傳'}</button>
+                  {uploadProgress !== null && <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>}
+                </div>
               </div>
+              <p className="text-xs text-slate-500">圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
+              {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
             </div>
           ) : (
             <div className="flex gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
