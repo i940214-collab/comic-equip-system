@@ -227,6 +227,7 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [isDbMissing, setIsDbMissing] = useState(false);
   const [localMode, setLocalMode] = useState(false);
+  const [localModeReason, setLocalModeReason] = useState('');
 
   useEffect(() => {
     const manifestUrl = new URL('assets/library.json', window.location.href);
@@ -252,6 +253,7 @@ export default function App() {
       if (cancelled) return;
       console.warn("Switching to local mode:", reason);
       setLocalMode(true);
+      setLocalModeReason(reason || 'Firebase not connected');
       setUser({ uid: 'local-mode' });
       setErrorMsg(null);
       setLoading(false);
@@ -313,6 +315,7 @@ export default function App() {
       if (dataSettled) return;
       console.warn("Switching to local mode: Firestore timed out");
       setLocalMode(true);
+      setLocalModeReason("Firestore timed out");
       setLoading(false);
     }, 8000);
     
@@ -404,6 +407,7 @@ export default function App() {
     if (!db) {
       setGlobalState(prev => ({ ...prev, ...updates }));
       setLocalMode(true);
+      setLocalModeReason("Firestore is not available");
       return;
     }
     try {
@@ -497,7 +501,7 @@ export default function App() {
 
   // --- 各模式組件渲染 ---
   if (viewMode === 'chat-client') return <ChatClientView globalState={globalState} updateGlobalState={updateGlobalState} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} localModeReason={localModeReason} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
   if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} db={db} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
   
   return null;
@@ -559,7 +563,7 @@ function ChatClientView({ globalState, updateGlobalState, onExit }) {
 // ==========================================
 // 子組件：導演中控台
 // ==========================================
-function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, displayStatuses, onExit }) {
+function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, localModeReason, displayStatuses, onExit }) {
   const { timeline, isPlaying, marquee, standbyMode, bgm, bulletChats, overlayEffect, stats } = globalState;
   const [selectedSceneId, setSelectedSceneId] = useState(timeline[0]?.id || null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -724,6 +728,12 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
               </div>
               {localMode && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-1 rounded">本機模式</span>}
             </div>
+            {localMode && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                目前未連上 Firebase，手機或其他電腦的螢幕狀態不會出現在這裡。
+                {localModeReason && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason}</span>}
+              </div>
+            )}
             <div className="grid sm:grid-cols-3 gap-3">
               {connectedScreens.map(({ id, status, online, ageSeconds }) => (
                 <div key={id} className={`bg-white border rounded-lg p-3 ${online ? 'border-emerald-200' : 'border-slate-200'}`}>
