@@ -228,6 +228,15 @@ export default function App() {
   const [isDbMissing, setIsDbMissing] = useState(false);
   const [localMode, setLocalMode] = useState(false);
   const [localModeReason, setLocalModeReason] = useState('');
+  const [syncInfo, setSyncInfo] = useState({
+    hasConfig: hasFirebaseConfig,
+    projectId: appId,
+    mode: hasFirebaseConfig ? 'initializing' : 'local',
+    auth: hasFirebaseConfig ? 'pending' : 'missing-config',
+    data: hasFirebaseConfig ? 'pending' : 'local',
+    displayStatus: hasFirebaseConfig ? 'pending' : 'local',
+    reason: hasFirebaseConfig ? '' : 'Firebase runtime config missing',
+  });
 
   useEffect(() => {
     const manifestUrl = new URL('assets/library.json', window.location.href);
@@ -254,6 +263,14 @@ export default function App() {
       console.warn("Switching to local mode:", reason);
       setLocalMode(true);
       setLocalModeReason(reason || 'Firebase not connected');
+      setSyncInfo(prev => ({
+        ...prev,
+        mode: 'local',
+        auth: auth ? prev.auth : 'missing-config',
+        data: 'local',
+        displayStatus: 'local',
+        reason: reason || 'Firebase not connected',
+      }));
       setUser({ uid: 'local-mode' });
       setErrorMsg(null);
       setLoading(false);
@@ -285,6 +302,8 @@ export default function App() {
       if (!firebaseUser || cancelled) return;
       clearTimeout(authTimeout);
       setLocalMode(false);
+      setLocalModeReason('');
+      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', auth: 'signed-in', reason: '' }));
       setUser(firebaseUser);
     });
     return () => {
@@ -316,6 +335,7 @@ export default function App() {
       console.warn("Switching to local mode: Firestore timed out");
       setLocalMode(true);
       setLocalModeReason("Firestore timed out");
+      setSyncInfo(prev => ({ ...prev, mode: 'local', data: 'timeout', displayStatus: 'local', reason: 'Firestore timed out' }));
       setLoading(false);
     }, 8000);
     
@@ -337,6 +357,7 @@ export default function App() {
       }
       setLoading(false);
       setIsDbMissing(false);
+      setSyncInfo(prev => ({ ...prev, mode: 'cloud', data: 'connected', reason: '' }));
     }, (err) => {
       dataSettled = true;
       clearTimeout(dataTimeout);
@@ -348,6 +369,7 @@ export default function App() {
       } else {
         setErrorMsg(`連線錯誤: ${err.message}`);
       }
+      setSyncInfo(prev => ({ ...prev, mode: 'error', data: err.code || 'error', reason: err.message }));
       setLoading(false);
     });
 
@@ -372,7 +394,11 @@ export default function App() {
           nextStatuses[d.id] = { id: d.id, ...d.data() };
         });
         setDisplayStatuses(nextStatuses);
-      }, (err) => console.log("Display status listener error:", err));
+        setSyncInfo(prev => ({ ...prev, displayStatus: 'connected' }));
+      }, (err) => {
+        console.log("Display status listener error:", err);
+        setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
+      });
     }
 
     const readLocalStatuses = () => {
@@ -408,6 +434,7 @@ export default function App() {
       setGlobalState(prev => ({ ...prev, ...updates }));
       setLocalMode(true);
       setLocalModeReason("Firestore is not available");
+      setSyncInfo(prev => ({ ...prev, mode: 'local', data: 'missing-db', displayStatus: 'local', reason: 'Firestore is not available' }));
       return;
     }
     try {
@@ -501,7 +528,7 @@ export default function App() {
 
   // --- 各模式組件渲染 ---
   if (viewMode === 'chat-client') return <ChatClientView globalState={globalState} updateGlobalState={updateGlobalState} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} localModeReason={localModeReason} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} localModeReason={localModeReason} syncInfo={syncInfo} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
   if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} db={db} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
   
   return null;
@@ -563,7 +590,7 @@ function ChatClientView({ globalState, updateGlobalState, onExit }) {
 // ==========================================
 // 子組件：導演中控台
 // ==========================================
-function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, localModeReason, displayStatuses, onExit }) {
+function ControllerView({ globalState, updateGlobalState, assets, setAssets, db, storage, appId, localMode, localModeReason, syncInfo, displayStatuses, onExit }) {
   const { timeline, isPlaying, marquee, standbyMode, bgm, bulletChats, overlayEffect, stats } = globalState;
   const [selectedSceneId, setSelectedSceneId] = useState(timeline[0]?.id || null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -581,6 +608,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     return { id, status, online, ageSeconds };
   }), [displayStatuses, now]);
   const onlineCount = connectedScreens.filter(screen => screen.online).length;
+  const isCloudReady = syncInfo?.mode === 'cloud' && syncInfo?.displayStatus === 'connected';
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
@@ -726,12 +754,21 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">螢幕連線</div>
                 <div className="text-lg font-semibold text-slate-900">{onlineCount}/3 在線</div>
               </div>
-              {localMode && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-1 rounded">本機模式</span>}
+              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${isCloudReady ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-100 border-amber-200'}`}>
+                {isCloudReady ? '雲端同步' : '本機/未完整同步'}
+              </span>
             </div>
-            {localMode && (
+            {!isCloudReady && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                目前未連上 Firebase，手機或其他電腦的螢幕狀態不會出現在這裡。
-                {localModeReason && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason}</span>}
+                手機跨裝置連線需要雲端同步。若同一台電腦兩個分頁會顯示、手機不會，代表目前沒有成功使用 Firestore 心跳。
+                {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
+                  <span>Config: {syncInfo?.hasConfig ? 'present' : 'missing'}</span>
+                  <span>Auth: {syncInfo?.auth || 'unknown'}</span>
+                  <span>Data: {syncInfo?.data || 'unknown'}</span>
+                  <span>Display: {syncInfo?.displayStatus || 'unknown'}</span>
+                  <span className="col-span-2 truncate">Project: {syncInfo?.projectId || appId}</span>
+                </div>
               </div>
             )}
             <div className="grid sm:grid-cols-3 gap-3">
