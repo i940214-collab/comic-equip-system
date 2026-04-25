@@ -73,6 +73,16 @@
       import React from 'react';
       import { createRoot } from 'react-dom/client';
 
+      const configUrl = new URL('./firebase-config.json', window.location.href);
+      try {
+        const configResponse = await fetch(configUrl, { cache: 'no-store' });
+        if (configResponse.ok) {
+          window.FIREBASE_CONFIG = await configResponse.json();
+        }
+      } catch (error) {
+        console.warn('Firebase runtime config not loaded; using local mode.', error);
+      }
+
       const appSourceUrl = new URL('./src/App.jsx', window.location.href);
       const appSource = await fetch(appSourceUrl).then((response) => {
         if (!response.ok) {

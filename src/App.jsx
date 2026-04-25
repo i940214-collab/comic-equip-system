@@ -59,20 +59,16 @@ import {
 } from 'lucide-react';
 
 // --- Firebase 配置 ---
-const firebaseConfig = {
-  apiKey: "AIzaSyAhpFrN_o61WluwGGOy54_SZjqKLKbMrGc",
-  authDomain: "exhibition-system-0214.firebaseapp.com",
-  projectId: "exhibition-system-0214",
-  storageBucket: "exhibition-system-0214.firebasestorage.app",
-  messagingSenderId: "739673952202",
-  appId: "1:739673952202:web:ae6a70bd1995697ede0933"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const appId = 'exhibition-system-0214'; // 固定使用您的專案 ID
+// The real Firebase config is loaded at runtime from firebase-config.json.
+// Keep API keys out of the repository to avoid GitHub secret scanning alerts.
+const DEFAULT_APP_ID = 'exhibition-system-0214';
+const firebaseConfig = typeof window !== 'undefined' ? window.FIREBASE_CONFIG : null;
+const hasFirebaseConfig = Boolean(firebaseConfig?.apiKey && firebaseConfig?.projectId && firebaseConfig?.appId);
+const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
+const auth = app ? getAuth(app) : null;
+const db = app ? getFirestore(app) : null;
+const storage = app ? getStorage(app) : null;
+const appId = firebaseConfig?.projectId || DEFAULT_APP_ID;
 
 // --- 預設資料設定 ---
 const CONTENT_TYPES = [
@@ -130,16 +126,55 @@ const DEFAULT_STATE = {
   stats: { chatCount: 0, likes: 0 }
 };
 
+const inferAssetType = (url = '') => {
+  const cleanUrl = url.split('?')[0].toLowerCase();
+  if (/\.(mp4|webm|mov|m4v|ogg)$/.test(cleanUrl)) return 'video';
+  if (/\.(jpg|jpeg|png|gif|webp|avif|svg)$/.test(cleanUrl)) return 'image';
+  return 'iframe';
+};
+
+const normalizeStaticAssets = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter(asset => asset?.url)
+    .map((asset, index) => ({
+      id: `static-${asset.id || index}`,
+      name: asset.name || asset.url.split('/').pop() || `素材 ${index + 1}`,
+      type: asset.type || inferAssetType(asset.url),
+      url: asset.url,
+      createdAt: 0,
+      static: true,
+    }));
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState('select'); 
   const [screenId, setScreenId] = useState(null);
   const [globalState, setGlobalState] = useState(DEFAULT_STATE);
+  const [staticAssets, setStaticAssets] = useState([]);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState(null);
   const [isDbMissing, setIsDbMissing] = useState(false);
   const [localMode, setLocalMode] = useState(false);
+
+  useEffect(() => {
+    const manifestUrl = new URL('assets/library.json', window.location.href);
+    fetch(manifestUrl, { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : [])
+      .then(data => setStaticAssets(normalizeStaticAssets(Array.isArray(data) ? data : data.assets)))
+      .catch(error => console.warn("Static assets manifest not loaded:", error));
+  }, []);
+
+  const libraryAssets = useMemo(() => {
+    const seen = new Set();
+    return [...staticAssets, ...assets].filter(asset => {
+      if (!asset?.url || seen.has(asset.url)) return false;
+      seen.add(asset.url);
+      return true;
+    });
+  }, [staticAssets, assets]);
 
   // 1. 初始化 Auth
   useEffect(() => {
@@ -156,6 +191,15 @@ export default function App() {
     const authTimeout = setTimeout(() => {
       enableLocalMode("Firebase auth timed out");
     }, 8000);
+
+    if (!auth) {
+      clearTimeout(authTimeout);
+      enableLocalMode("Firebase runtime config missing");
+      return () => {
+        cancelled = true;
+        clearTimeout(authTimeout);
+      };
+    }
 
     const initAuth = async () => {
       try {
@@ -191,7 +235,7 @@ export default function App() {
       return;
     }
 
-    if (!user) return;
+    if (!user || !db) return;
     
     // 路徑: artifacts -> appId -> public -> data -> appConfig -> globalState
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
@@ -249,6 +293,11 @@ export default function App() {
     if (!user) return;
     if (localMode) {
       setGlobalState(prev => ({ ...prev, ...updates }));
+      return;
+    }
+    if (!db) {
+      setGlobalState(prev => ({ ...prev, ...updates }));
+      setLocalMode(true);
       return;
     }
     try {
@@ -342,7 +391,7 @@ export default function App() {
 
   // --- 各模式組件渲染 ---
   if (viewMode === 'chat-client') return <ChatClientView globalState={globalState} updateGlobalState={updateGlobalState} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={assets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
   if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} onExit={() => setViewMode('select')} />;
   
   return null;
@@ -704,7 +753,7 @@ function AnalyticsModal({ stats, bulletChats, onClose }) {
 // 子組件：素材庫 Modal
 // ==========================================
 function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, onClose, onSelect }) {
-  const [activeTab, setActiveTab] = useState('upload'); 
+  const [activeTab, setActiveTab] = useState('url'); 
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('video');
@@ -753,6 +802,8 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   };
 
   const handleDelete = async (id) => {
+    const target = assets.find(asset => asset.id === id);
+    if (target?.static) return;
     if (localMode) {
       setAssets(prev => prev.filter(asset => asset.id !== id));
       return;
@@ -764,7 +815,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 font-sans">
       <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h2 className="font-semibold text-lg flex items-center gap-2 text-slate-800"><Library className="text-blue-500"/> 雲端素材庫</h2>
+          <h2 className="font-semibold text-lg flex items-center gap-2 text-slate-800"><Library className="text-blue-500"/> 素材庫</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 bg-white p-1.5 rounded-full border shadow-sm transition-colors"><X size={18}/></button>
         </div>
         <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex flex-col gap-4">
@@ -801,12 +852,15 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                     <div className="flex items-center gap-2 mb-3 text-slate-800">
                       {asset.type === 'video' ? <Play size={16} className="text-blue-500"/> : asset.type === 'iframe' ? <Globe size={16} className="text-purple-500" /> : <ImageIcon size={16} className="text-emerald-500"/>}
                       <span className="font-semibold text-sm truncate flex-1">{asset.name}</span>
+                      {asset.static && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">STATIC</span>}
                     </div>
                     <div className="text-[10px] text-slate-400 truncate mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100">{asset.url}</div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => onSelect(asset.url)} className="flex-1 bg-slate-50 hover:bg-blue-50 text-blue-600 font-medium text-xs py-2.5 rounded-xl transition-colors border border-slate-100 hover:border-blue-200">選用</button>
-                    <button onClick={() => handleDelete(asset.id)} className="px-3 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-xl border border-transparent hover:border-red-100"><Trash2 size={16}/></button>
+                    {!asset.static && (
+                      <button onClick={() => handleDelete(asset.id)} className="px-3 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-xl border border-transparent hover:border-red-100"><Trash2 size={16}/></button>
+                    )}
                   </div>
                 </div>
               ))}
