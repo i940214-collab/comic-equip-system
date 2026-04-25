@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="zh-Hant">
   <head>
@@ -73,7 +74,13 @@
       import React from 'react';
       import { createRoot } from 'react-dom/client';
 
+      const pageUrl = new URL(window.location.href);
+      const cacheBuster = pageUrl.searchParams.get('v');
+
       const configUrl = new URL('./firebase-config.json', window.location.href);
+      if (cacheBuster) {
+        configUrl.searchParams.set('v', cacheBuster);
+      }
       try {
         const configResponse = await fetch(configUrl, { cache: 'no-store' });
         if (configResponse.ok) {
@@ -84,7 +91,10 @@
       }
 
       const appSourceUrl = new URL('./src/App.jsx', window.location.href);
-      const appSource = await fetch(appSourceUrl).then((response) => {
+      if (cacheBuster) {
+        appSourceUrl.searchParams.set('v', cacheBuster);
+      }
+      const appSource = await fetch(appSourceUrl, { cache: 'no-store' }).then((response) => {
         if (!response.ok) {
           throw new Error(`無法讀取 ${appSourceUrl.pathname}`);
         }
