@@ -1211,18 +1211,60 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   const [adding, setAdding] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState('');
+  const fileInputRef = useRef(null);
+  const uploadProgressTimerRef = useRef(null);
+
+  const clearUploadProgressTimer = () => {
+    if (!uploadProgressTimerRef.current) return;
+    window.clearTimeout(uploadProgressTimerRef.current);
+    uploadProgressTimerRef.current = null;
+  };
+
+  const scheduleUploadProgressReset = () => {
+    clearUploadProgressTimer();
+    uploadProgressTimerRef.current = window.setTimeout(() => {
+      setUploadProgress(null);
+      uploadProgressTimerRef.current = null;
+    }, 1200);
+  };
+
+  const resetSelectedFile = () => {
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const formatFileSize = (bytes = 0) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  useEffect(() => () => clearUploadProgressTimer(), []);
 
   const handleAddUrl = async () => {
     if (!newUrl || !newName) return;
     setAdding(true);
+    setUploadError('');
+    setUploadSuccess('');
     if (localMode) {
       setAssets(prev => [...prev, { id: Date.now().toString(), name: newName, url: newUrl, type: newType, createdAt: Date.now() }]);
       setNewUrl('');
       setNewName('');
+      setUploadSuccess('網址素材已加入素材庫。');
       setAdding(false);
       return;
     }
-    try { await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), { name: newName, url: newUrl, type: newType, createdAt: Date.now() }); setNewUrl(''); setNewName(''); } catch (error) { console.error(error); }
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), { name: newName, url: newUrl, type: newType, createdAt: Date.now() });
+      setNewUrl('');
+      setNewName('');
+      setUploadSuccess('網址素材已加入素材庫。');
+    } catch (error) {
+      console.error(error);
+      setUploadError(error?.message || '新增網址素材失敗，請稍後再試。');
+    }
     setAdding(false);
   };
 
@@ -1230,15 +1272,22 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     if (!selectedFile) return;
     setAdding(true);
     setUploadError('');
+    setUploadSuccess('');
+    clearUploadProgressTimer();
     setUploadProgress(4);
     const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
     const assetName = newName || selectedFile.name;
+    let shouldKeepProgress = false;
 
     try {
       if (localMode) {
         setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
-        setSelectedFile(null);
+        resetSelectedFile();
         setNewName('');
+        setUploadProgress(100);
+        setUploadSuccess(`已加入素材庫：${assetName}`);
+        shouldKeepProgress = true;
+        scheduleUploadProgressReset();
         return;
       }
 
@@ -1274,14 +1323,19 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
         createdAt: Date.now()
       });
       setUploadProgress(100);
-      setSelectedFile(null);
+      resetSelectedFile();
       setNewName('');
+      setUploadSuccess(`已加入素材庫：${assetName}`);
+      shouldKeepProgress = true;
+      scheduleUploadProgressReset();
     } catch (error) {
       console.error(error);
       setUploadError(getUploadErrorMessage(error, fileType));
     } finally {
       setAdding(false);
-      setUploadProgress(null);
+      if (!shouldKeepProgress) {
+        setUploadProgress(null);
+      }
     }
   };
 
@@ -1310,15 +1364,27 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           {activeTab === 'upload' ? (
             <div className="space-y-2">
               <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-                <input type="file" accept="video/mp4, image/jpeg, image/png, image/webp" onChange={e => { setSelectedFile(e.target.files[0]); setUploadError(''); setUploadProgress(null); }} className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors" />
+                <input ref={fileInputRef} type="file" accept="video/mp4, image/jpeg, image/png, image/webp" onChange={e => { setSelectedFile(e.target.files[0] || null); setUploadError(''); setUploadSuccess(''); clearUploadProgressTimer(); setUploadProgress(null); }} className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors" />
                 <input type="text" placeholder="自訂名稱" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1 px-3 py-2 rounded-xl outline-none text-sm font-medium border border-transparent focus:border-blue-100 transition-colors text-slate-800" />
                 <div className="flex flex-col w-28">
                   <button onClick={handleUploadFile} disabled={adding || !selectedFile} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 flex justify-center items-center gap-1 w-full hover:bg-blue-700 transition-colors"><UploadCloud size={16}/> {adding ? '處理中' : '上傳'}</button>
                   {uploadProgress !== null && <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>}
                 </div>
               </div>
+              <div className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm ${selectedFile ? 'border-blue-200 bg-blue-50/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{selectedFile ? selectedFile.name : '尚未選擇檔案'}</div>
+                  <div className="text-xs mt-1">{selectedFile ? `${selectedFile.type || '未知格式'} · ${formatFileSize(selectedFile.size)}` : '選完檔案後，右側的「上傳」按鈕才會啟用。'}</div>
+                </div>
+                {selectedFile && (
+                  <button onClick={() => { resetSelectedFile(); setUploadError(''); setUploadSuccess(''); clearUploadProgressTimer(); setUploadProgress(null); }} className="ml-3 shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700">
+                    清除
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-slate-500">圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
+              {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
             </div>
           ) : (
             <div className="flex gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
