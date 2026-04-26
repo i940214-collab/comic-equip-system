@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -1242,6 +1241,20 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const runWithTimeout = async (promise, ms, timeoutMessage) => {
+    let timeoutId;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => reject(new Error(timeoutMessage)), ms);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    }
+  };
+
   useEffect(() => () => clearUploadProgressTimer(), []);
 
   const handleAddUrl = async () => {
@@ -1258,7 +1271,16 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
       return;
     }
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), { name: newName, url: newUrl, type: newType, createdAt: Date.now() });
+      await runWithTimeout(
+        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
+          name: newName,
+          url: newUrl,
+          type: newType,
+          createdAt: Date.now()
+        }),
+        12000,
+        '雲端連線逾時，請稍後再試。'
+      );
       setNewUrl('');
       setNewName('');
       setUploadSuccess('網址素材已加入素材庫。');
@@ -1297,7 +1319,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
 
       if (storage) {
         try {
-          assetUrl = await uploadAssetToStorage(storage, appId, selectedFile, setUploadProgress);
+          assetUrl = await runWithTimeout(
+            uploadAssetToStorage(storage, appId, selectedFile, setUploadProgress),
+            18000,
+            '檔案上傳逾時，請檢查網路後重試。'
+          );
         } catch (error) {
           console.warn('Firebase Storage upload failed:', error);
           if (fileType !== 'image') throw error;
@@ -1310,19 +1336,27 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
 
       if (!assetUrl) {
         setUploadProgress(55);
-        assetUrl = await compressImageForFirestore(selectedFile);
+        assetUrl = await runWithTimeout(
+          compressImageForFirestore(selectedFile),
+          12000,
+          '圖片處理逾時，請換一張較小圖片再試。'
+        );
         setUploadProgress(86);
       }
 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
-        name: assetName,
-        url: assetUrl,
-        type: fileType,
-        source: assetSource,
-        originalName: selectedFile.name,
-        originalSize: selectedFile.size,
-        createdAt: Date.now()
-      });
+      await runWithTimeout(
+        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
+          name: assetName,
+          url: assetUrl,
+          type: fileType,
+          source: assetSource,
+          originalName: selectedFile.name,
+          originalSize: selectedFile.size,
+          createdAt: Date.now()
+        }),
+        12000,
+        '素材寫入逾時，請稍後再試。'
+      );
       setUploadProgress(100);
       resetSelectedFile();
       setNewName('');
