@@ -1411,11 +1411,11 @@ function OverlayEffects({ type }) {
 // ==========================================
 function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const { timeline = [DEFAULT_SCENE], isPlaying = false, startTime = Date.now(), marquee, standbyMode, bgm, fxTrigger, bulletChats, overlayEffect } = globalState;
-  const [currentScene, setCurrentScene] = useState(timeline[0] || DEFAULT_SCENE);
   const cameraVideoRef = useRef(null);
   const bgmRef = useRef(null);
   const fxRef = useRef(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   const handleUnlockAndFullscreen = () => {
     setAudioUnlocked(true);
@@ -1428,24 +1428,13 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     else if (document.exitFullscreen) document.exitFullscreen();
   };
   useEffect(() => {
-    let animationFrameId;
-    if (!isPlaying || standbyMode) { setCurrentScene(timeline[0] || DEFAULT_SCENE); return; }
-    const calculateCurrentScene = () => {
-      const elapsedSecs = (Date.now() - startTime) / 1000;
-      const totalDuration = timeline.reduce((acc, cur) => acc + (Number(cur?.duration) || 10), 0);
-      if (totalDuration === 0) return;
-      const currentCycleTime = Math.max(0, elapsedSecs % totalDuration);
-      let accumulatedTime = 0, activeIdx = 0;
-      for (let i = 0; i < timeline.length; i++) {
-        accumulatedTime += (Number(timeline[i]?.duration) || 10);
-        if (currentCycleTime < accumulatedTime) { activeIdx = i; break; }
-      }
-      setCurrentScene(timeline[activeIdx] || timeline[0]);
-      animationFrameId = requestAnimationFrame(calculateCurrentScene);
-    };
-    animationFrameId = requestAnimationFrame(calculateCurrentScene);
-    return () => { if (animationFrameId) cancelAnimationFrame(animationFrameId); };
-  }, [isPlaying, startTime, timeline, standbyMode]);
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, []);
+
+  const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
+  const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
 
   useEffect(() => {
     if (!id) return;
@@ -1546,13 +1535,14 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const spanTotalWidth = `calc(300vw + ${bezelGap * 2}px)`;
   const spanLeftOffset = id === '1' ? '0px' : id === '2' ? `calc(-100vw - ${bezelGap}px)` : `calc(-200vw - ${bezelGap * 2}px)`;
   const spanAnimationClass = currentScene.spanAnimation ? 'animate-ken-burns' : '';
+  const sceneRenderKey = `${currentScene.id}-${currentScene.isSpanMode ? 'span' : `independent-${id}`}`;
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden cursor-none select-none flex items-center justify-center text-white" onDoubleClick={toggleFullScreen}>
       <audio ref={bgmRef} src={bgm.url} loop />
       <audio ref={fxRef} />
 
-      <div key={currentScene.id} className={`absolute inset-0 flex items-center justify-center w-full h-full ${transitionClass}`}>
+      <div key={sceneRenderKey} className={`absolute inset-0 flex items-center justify-center w-full h-full ${transitionClass}`}>
         {currentScene.isSpanMode ? (
           <>
             {currentScene.spanType === 'image' && currentScene.spanContent && (
