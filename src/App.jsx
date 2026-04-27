@@ -101,8 +101,11 @@ const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+const SYNC_COMMAND_LEAD_MS = 450;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
+const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+const getApplyDelayMs = (applyAt) => Math.max(0, (Number(applyAt) || 0) - Date.now());
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 
@@ -216,11 +219,13 @@ const DEFAULT_STATE = {
   isPlaying: false,
   startTime: Date.now(),
   standbyMode: false,
-  marquee: { active: false, text: '歡迎蒞臨！' },
-  bgm: { active: false, url: '', volume: 50 },
+  standbyApplyAt: 0,
+  marquee: { active: false, text: '歡迎蒞臨！', applyAt: 0 },
+  bgm: { active: false, url: '', volume: 50, applyAt: 0 },
   fxTrigger: { id: '', timestamp: 0 },
   overlayEffect: 'none',
-  bulletChats: { active: false, messages: [] },
+  overlayApplyAt: 0,
+  bulletChats: { active: false, messages: [], applyAt: 0 },
   stats: { chatCount: 0, likes: 0 }
 };
 
@@ -567,7 +572,7 @@ export default function App() {
           ...DEFAULT_STATE,
           ...data,
           timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
-          bulletChats: data.bulletChats || { active: false, messages: [] },
+          bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
           stats: data.stats || { chatCount: 0, likes: 0 }
         });
       } else {
@@ -816,6 +821,8 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [inputTarget, setInputTarget] = useState(null); 
   const [now, setNow] = useState(Date.now());
+  const [marqueeDraft, setMarqueeDraft] = useState(marquee?.text || '');
+  const [bgmUrlDraft, setBgmUrlDraft] = useState(bgm?.url || '');
 
   const activeScene = timeline.find(s => s.id === selectedSceneId) || timeline[0] || DEFAULT_SCENE;
   const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
@@ -834,11 +841,33 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     return () => clearInterval(timer);
   }, []);
 
-  const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: Date.now() });
-  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode });
-  const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, active: !bgm.active } });
-  const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: Date.now() } });
-  const toggleChats = () => updateGlobalState({ bulletChats: { ...bulletChats, active: !bulletChats.active } });
+  useEffect(() => {
+    setMarqueeDraft(marquee?.text || '');
+  }, [marquee?.text]);
+
+  useEffect(() => {
+    setBgmUrlDraft(bgm?.url || '');
+  }, [bgm?.url]);
+
+  const commitMarqueeDraft = () => {
+    const nextText = marqueeDraft.trim();
+    if (nextText === (marquee?.text || '')) return;
+    updateGlobalState({ marquee: { ...marquee, text: nextText } });
+  };
+
+  const commitBgmUrlDraft = () => {
+    const nextUrl = bgmUrlDraft.trim();
+    if (nextUrl === (bgm?.url || '')) return;
+    updateGlobalState({ bgm: { ...bgm, url: nextUrl } });
+  };
+
+  const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: getFutureSyncTimestamp() });
+  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: getFutureSyncTimestamp() });
+  const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } });
+  const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: getFutureSyncTimestamp() } });
+  const toggleChats = () => updateGlobalState({ bulletChats: { ...bulletChats, active: !bulletChats.active, applyAt: getFutureSyncTimestamp() } });
+  const toggleMarquee = () => updateGlobalState({ marquee: { ...marquee, text: marqueeDraft.trim(), active: !marquee.active, applyAt: getFutureSyncTimestamp() } });
+  const changeOverlayEffect = (nextEffect) => updateGlobalState({ overlayEffect: nextEffect, overlayApplyAt: getFutureSyncTimestamp() });
 
   const updateScene = (sceneId, updates) => updateGlobalState({ timeline: timeline.map(s => s.id === sceneId ? { ...s, ...updates } : s) });
   const updateScreenContent = (sceneId, screenId, field, value) => {
@@ -863,7 +892,10 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const openLib = (target) => { setInputTarget(target); setLibraryOpen(true); };
   const handleLibSelect = (url) => {
     if (!inputTarget) return;
-    if (inputTarget.isBgm) updateGlobalState({ bgm: { ...bgm, url } });
+    if (inputTarget.isBgm) {
+      setBgmUrlDraft(url);
+      updateGlobalState({ bgm: { ...bgm, url } });
+    }
     else if (inputTarget.isSpan) updateScene(inputTarget.sceneId, { [inputTarget.field]: url });
     else updateScreenContent(inputTarget.sceneId, inputTarget.screenId, inputTarget.field, url);
     setLibraryOpen(false); setInputTarget(null);
@@ -898,14 +930,27 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
         
         <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1">
           <div className="px-2 text-sm font-medium text-indigo-300 flex items-center gap-1"><CloudRain size={14}/> 氛圍</div>
-          <select value={overlayEffect || 'none'} onChange={e => updateGlobalState({ overlayEffect: e.target.value })} className="bg-slate-700 text-white border-none outline-none text-xs rounded px-2 py-1 cursor-pointer hover:bg-slate-600 font-medium">
+          <select value={overlayEffect || 'none'} onChange={e => changeOverlayEffect(e.target.value)} className="bg-slate-700 text-white border-none outline-none text-xs rounded px-2 py-1 cursor-pointer hover:bg-slate-600 font-medium">
             {OVERLAY_EFFECTS.map(ef => <option key={ef.id} value={ef.id}>{ef.label}</option>)}
           </select>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1">
-          <input type="text" value={marquee.text} onChange={e => updateGlobalState({ marquee: { ...marquee, text: e.target.value } })} placeholder="廣播跑馬燈內容..." className="bg-transparent border-none outline-none text-sm px-3 text-amber-300 w-48 font-medium" />
-          <button onClick={() => updateGlobalState({ marquee: { ...marquee, active: !marquee.active } })} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${marquee.active ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>{marquee.active ? '停止' : '發送'}</button>
+          <input
+            type="text"
+            value={marqueeDraft}
+            onChange={e => setMarqueeDraft(e.target.value)}
+            onBlur={commitMarqueeDraft}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                toggleMarquee();
+              }
+            }}
+            placeholder="廣播跑馬燈內容..."
+            className="bg-transparent border-none outline-none text-sm px-3 text-amber-300 w-48 font-medium"
+          />
+          <button onClick={toggleMarquee} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${marquee.active ? 'bg-amber-500 text-slate-900' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>{marquee.active ? '停止' : '發送'}</button>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 pr-2">
@@ -915,7 +960,20 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
 
         <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1 pl-3 flex-1">
           <Music size={14} className="text-blue-400"/>
-          <input type="text" value={bgm.url} onChange={e => updateGlobalState({ bgm: { ...bgm, url: e.target.value } })} placeholder="背景音樂 URL" className="bg-transparent border-none outline-none text-xs text-blue-200 w-24" />
+          <input
+            type="text"
+            value={bgmUrlDraft}
+            onChange={e => setBgmUrlDraft(e.target.value)}
+            onBlur={commitBgmUrlDraft}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitBgmUrlDraft();
+              }
+            }}
+            placeholder="背景音樂 URL"
+            className="bg-transparent border-none outline-none text-xs text-blue-200 w-24"
+          />
           <button onClick={() => openLib({ isBgm: true })} className="text-[10px] font-medium bg-slate-700 px-2 py-1 rounded">庫</button>
           <button onClick={toggleBgm} className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${bgm.active ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'}`}>{bgm.active ? '播放中' : '靜音'}</button>
           <div className="w-px h-6 bg-slate-700 mx-1" />
@@ -1526,12 +1584,37 @@ function OverlayEffects({ type }) {
 // 子組件：顯示端螢幕
 // ==========================================
 function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
-  const { timeline = [DEFAULT_SCENE], isPlaying = false, startTime = Date.now(), marquee, standbyMode, bgm, fxTrigger, bulletChats, overlayEffect } = globalState;
+  const {
+    timeline = [DEFAULT_SCENE],
+    isPlaying = false,
+    startTime = Date.now(),
+    marquee,
+    standbyMode,
+    standbyApplyAt = 0,
+    bgm,
+    fxTrigger,
+    bulletChats,
+    overlayEffect,
+    overlayApplyAt = 0,
+  } = globalState;
   const cameraVideoRef = useRef(null);
   const bgmRef = useRef(null);
   const fxRef = useRef(null);
+  const lastFxTimestampRef = useRef(0);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [effectiveStandbyMode, setEffectiveStandbyMode] = useState(Boolean(standbyMode));
+  const [effectiveOverlayEffect, setEffectiveOverlayEffect] = useState(overlayEffect || 'none');
+  const [effectiveMarquee, setEffectiveMarquee] = useState({
+    active: Boolean(marquee?.active),
+    text: marquee?.text || '',
+  });
+  const [effectiveBulletChatsActive, setEffectiveBulletChatsActive] = useState(Boolean(bulletChats?.active));
+  const [effectiveBgm, setEffectiveBgm] = useState({
+    active: Boolean(bgm?.active),
+    url: bgm?.url || '',
+    volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
+  });
 
   const handleUnlockAndFullscreen = () => {
     setAudioUnlocked(true);
@@ -1551,6 +1634,40 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
 
   const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setEffectiveStandbyMode(Boolean(standbyMode)), getApplyDelayMs(standbyApplyAt));
+    return () => clearTimeout(timer);
+  }, [standbyMode, standbyApplyAt]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setEffectiveOverlayEffect(overlayEffect || 'none'), getApplyDelayMs(overlayApplyAt));
+    return () => clearTimeout(timer);
+  }, [overlayEffect, overlayApplyAt]);
+
+  useEffect(() => {
+    const nextMarquee = {
+      active: Boolean(marquee?.active),
+      text: marquee?.text || '',
+    };
+    const timer = setTimeout(() => setEffectiveMarquee(nextMarquee), getApplyDelayMs(marquee?.applyAt));
+    return () => clearTimeout(timer);
+  }, [marquee?.active, marquee?.text, marquee?.applyAt]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setEffectiveBulletChatsActive(Boolean(bulletChats?.active)), getApplyDelayMs(bulletChats?.applyAt));
+    return () => clearTimeout(timer);
+  }, [bulletChats?.active, bulletChats?.applyAt]);
+
+  useEffect(() => {
+    const nextBgm = {
+      active: Boolean(bgm?.active),
+      url: bgm?.url || '',
+      volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
+    };
+    const timer = setTimeout(() => setEffectiveBgm(nextBgm), getApplyDelayMs(bgm?.applyAt));
+    return () => clearTimeout(timer);
+  }, [bgm?.active, bgm?.url, bgm?.volume, bgm?.applyAt]);
 
   useEffect(() => {
     if (!id) return;
@@ -1596,18 +1713,31 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
 
   useEffect(() => {
     if (bgmRef.current && audioUnlocked) {
-      bgmRef.current.volume = (bgm.volume || 50) / 100;
-      if (bgm.active && bgm.url) bgmRef.current.play().catch(e => console.log("Audio failed"));
+      bgmRef.current.volume = (effectiveBgm.volume || 50) / 100;
+      if (effectiveBgm.active && effectiveBgm.url) bgmRef.current.play().catch(e => console.log("Audio failed"));
       else bgmRef.current.pause();
     }
-  }, [bgm, audioUnlocked]);
+  }, [effectiveBgm, audioUnlocked]);
 
   useEffect(() => {
-    if (fxRef.current && audioUnlocked && fxTrigger?.timestamp > 0) {
-      const fxUrls = { 'applause': 'https://actions.google.com/sounds/v1/crowds/crowd_cheering.ogg', 'bell': 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg' };
-      if (fxUrls[fxTrigger.id]) { fxRef.current.src = fxUrls[fxTrigger.id]; fxRef.current.play().catch(e => console.log(e)); }
-    }
-  }, [fxTrigger, audioUnlocked]);
+    const fxAt = Number(fxTrigger?.timestamp) || 0;
+    if (!fxRef.current || !audioUnlocked || fxAt <= 0 || fxAt === lastFxTimestampRef.current) return;
+
+    const fxUrls = {
+      applause: 'https://actions.google.com/sounds/v1/crowds/crowd_cheering.ogg',
+      bell: 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg'
+    };
+    const fxUrl = fxUrls[fxTrigger?.id];
+    if (!fxUrl) return;
+
+    lastFxTimestampRef.current = fxAt;
+    const timer = setTimeout(() => {
+      if (!fxRef.current) return;
+      fxRef.current.src = fxUrl;
+      fxRef.current.play().catch(e => console.log(e));
+    }, Math.max(0, fxAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [fxTrigger?.id, fxTrigger?.timestamp, audioUnlocked]);
 
   useEffect(() => {
     if (!document.getElementById('global-styles')) {
@@ -1625,7 +1755,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     }
   }, []);
 
-  if (standbyMode) {
+  if (effectiveStandbyMode) {
     return (
       <div className="fixed inset-0 bg-black flex flex-col items-center justify-center cursor-none select-none text-white" onDoubleClick={toggleFullScreen}>
         <div className="text-[15vw] font-mono font-bold text-slate-800 animate-pulse">{new Date().toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit'})}</div>
@@ -1655,7 +1785,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden cursor-none select-none flex items-center justify-center text-white" onDoubleClick={toggleFullScreen}>
-      <audio ref={bgmRef} src={bgm.url} loop />
+      <audio ref={bgmRef} src={effectiveBgm.url} loop />
       <audio ref={fxRef} />
 
       <div key={sceneRenderKey} className={`absolute inset-0 flex items-center justify-center w-full h-full ${transitionClass}`}>
@@ -1697,17 +1827,17 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
           </>
         )}
       </div>
-      <OverlayEffects type={overlayEffect} />
-      {bulletChats?.active && (
+      <OverlayEffects type={effectiveOverlayEffect} />
+      {effectiveBulletChatsActive && (
         <div className="absolute inset-0 pointer-events-none z-[48] overflow-hidden">
-          {bulletChats.messages.map((msg, i) => (
+          {(bulletChats?.messages || []).map((msg, i) => (
             <div key={msg.id} className="bullet-msg" style={{ top: `${10 + (i * 15) % 70}%`, color: msg.color }}>{msg.text}</div>
           ))}
         </div>
       )}
-      {marquee?.active && marquee.text && (
+      {effectiveMarquee?.active && effectiveMarquee.text && (
         <div className="absolute bottom-[8vh] left-0 w-full bg-amber-500/95 backdrop-blur-xl py-6 z-[49] shadow-[0_-10px_40px_rgba(245,158,11,0.3)] border-y-4 border-amber-300">
-          <div className="animate-marquee"><span className="text-[6vh] font-bold text-slate-900 tracking-widest">{marquee.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {marquee.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {marquee.text}</span></div>
+          <div className="animate-marquee"><span className="text-[6vh] font-bold text-slate-900 tracking-widest">{effectiveMarquee.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {effectiveMarquee.text} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {effectiveMarquee.text}</span></div>
         </div>
       )}
       <div className="absolute bottom-6 left-6 flex items-center gap-3 opacity-10 pointer-events-none z-50">
