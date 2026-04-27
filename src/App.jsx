@@ -97,8 +97,10 @@ const OVERLAY_EFFECTS = [
 ];
 
 const SCREEN_IDS = ['1', '2', '3'];
-const HEARTBEAT_STALE_MS = 12000;
+const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
+const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 
@@ -462,6 +464,7 @@ export default function App() {
   // 1. 初始化 Auth
   useEffect(() => {
     let cancelled = false;
+    let authSettled = false;
     const enableLocalMode = (reason) => {
       if (cancelled) return;
       console.warn("Switching to local mode:", reason);
@@ -480,16 +483,24 @@ export default function App() {
       setLoading(false);
     };
 
-    const authTimeout = setTimeout(() => {
-      enableLocalMode("Firebase auth timed out");
+    const authWarnTimeout = setTimeout(() => {
+      if (cancelled || authSettled) return;
+      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', auth: 'timeout-waiting', reason: 'Auth delayed, still retrying...' }));
     }, 8000);
 
+    const authFallbackTimeout = setTimeout(() => {
+      if (cancelled || authSettled) return;
+      enableLocalMode("Firebase auth timed out");
+    }, AUTH_FALLBACK_TIMEOUT_MS);
+
     if (!auth) {
-      clearTimeout(authTimeout);
+      clearTimeout(authWarnTimeout);
+      clearTimeout(authFallbackTimeout);
       enableLocalMode("Firebase runtime config missing");
       return () => {
         cancelled = true;
-        clearTimeout(authTimeout);
+        clearTimeout(authWarnTimeout);
+        clearTimeout(authFallbackTimeout);
       };
     }
 
@@ -498,13 +509,18 @@ export default function App() {
         await signInAnonymously(auth);
       } catch (error) { 
         console.error("Auth error:", error); 
+        authSettled = true;
+        clearTimeout(authWarnTimeout);
+        clearTimeout(authFallbackTimeout);
         enableLocalMode(error.message);
       }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (!firebaseUser || cancelled) return;
-      clearTimeout(authTimeout);
+      authSettled = true;
+      clearTimeout(authWarnTimeout);
+      clearTimeout(authFallbackTimeout);
       setLocalMode(false);
       setLocalModeReason('');
       setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', auth: 'signed-in', reason: '' }));
@@ -512,7 +528,8 @@ export default function App() {
     });
     return () => {
       cancelled = true;
-      clearTimeout(authTimeout);
+      clearTimeout(authWarnTimeout);
+      clearTimeout(authFallbackTimeout);
       unsubscribe();
     };
   }, []);
@@ -534,18 +551,16 @@ export default function App() {
     // 路徑: artifacts -> appId -> public -> data -> appConfig -> globalState
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
     let dataSettled = false;
-    const dataTimeout = setTimeout(() => {
+    const dataWarnTimeout = setTimeout(() => {
       if (dataSettled) return;
-      console.warn("Switching to local mode: Firestore timed out");
-      setLocalMode(true);
-      setLocalModeReason("Firestore timed out");
-      setSyncInfo(prev => ({ ...prev, mode: 'local', data: 'timeout', displayStatus: 'local', reason: 'Firestore timed out' }));
+      console.warn("Firestore first snapshot is delayed; keep waiting for cloud sync.");
+      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', data: 'timeout-waiting', reason: 'Firestore delayed, still retrying...' }));
       setLoading(false);
-    }, 8000);
+    }, FIRESTORE_WARN_TIMEOUT_MS);
     
     const unsubState = onSnapshot(stateDoc, (docSnap) => {
       dataSettled = true;
-      clearTimeout(dataTimeout);
+      clearTimeout(dataWarnTimeout);
       if (docSnap.exists()) {
         const data = docSnap.data();
         setGlobalState({
@@ -564,7 +579,7 @@ export default function App() {
       setSyncInfo(prev => ({ ...prev, mode: 'cloud', data: 'connected', reason: '' }));
     }, (err) => {
       dataSettled = true;
-      clearTimeout(dataTimeout);
+      clearTimeout(dataWarnTimeout);
       console.error("Firestore error:", err);
       if (err.message.includes("does not exist") || err.code === "not-found") {
         setIsDbMissing(true);
@@ -584,7 +599,7 @@ export default function App() {
       setAssets(list);
     }, (err) => console.log("Assets listener error:", err));
 
-    return () => { clearTimeout(dataTimeout); unsubState(); unsubAssets(); };
+    return () => { clearTimeout(dataWarnTimeout); unsubState(); unsubAssets(); };
   }, [user, localMode]);
 
   useEffect(() => {
