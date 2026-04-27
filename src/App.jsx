@@ -101,11 +101,11 @@ const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
-const SYNC_COMMAND_LEAD_MS = 450;
+const SYNC_COMMAND_LEAD_MS = 180; const MAX_SYNC_WAIT_MS = 1200;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
-const getApplyDelayMs = (applyAt) => Math.max(0, (Number(applyAt) || 0) - Date.now());
+const getApplyDelayMs = (applyAt) => { const targetTime = Number(applyAt) || 0; if (!targetTime) return 0; const delay = targetTime - Date.now(); return Math.max(0, Math.min(delay, MAX_SYNC_WAIT_MS)); }; const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => { const parsed = Number(remoteTs) || now; if (parsed > now + MAX_SYNC_WAIT_MS) return now; return parsed; };
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 
@@ -279,7 +279,7 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
     };
   }
 
-  const elapsedSecs = Math.max(0, (now - (globalState.startTime || now)) / 1000);
+  const safeStartTime = getSafeRemoteTimestamp(globalState.startTime, now); const elapsedSecs = Math.max(0, (now - safeStartTime) / 1000);
   const cycleElapsed = elapsedSecs % totalDuration;
   let accumulated = 0;
   let sceneIndex = 0;
@@ -1735,7 +1735,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
       if (!fxRef.current) return;
       fxRef.current.src = fxUrl;
       fxRef.current.play().catch(e => console.log(e));
-    }, Math.max(0, fxAt - Date.now()));
+    }, Math.max(0, Math.min(fxAt - Date.now(), MAX_SYNC_WAIT_MS)));
     return () => clearTimeout(timer);
   }, [fxTrigger?.id, fxTrigger?.timestamp, audioUnlocked]);
 
