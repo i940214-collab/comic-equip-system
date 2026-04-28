@@ -862,7 +862,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   };
 
   const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: getFutureSyncTimestamp() });
-  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: getFutureSyncTimestamp() });
+  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() });
   const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } });
   const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: getFutureSyncTimestamp() } });
   const toggleChats = () => updateGlobalState({ bulletChats: { ...bulletChats, active: !bulletChats.active, applyAt: getFutureSyncTimestamp() } });
@@ -1590,7 +1590,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     startTime = Date.now(),
     marquee,
     standbyMode,
-    standbyApplyAt = 0,
+     
     bgm,
     fxTrigger,
     bulletChats,
@@ -1636,9 +1636,9 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
 
   useEffect(() => {
-    const timer = setTimeout(() => setEffectiveStandbyMode(Boolean(standbyMode)), getApplyDelayMs(standbyApplyAt));
-    return () => clearTimeout(timer);
-  }, [standbyMode, standbyApplyAt]);
+    setEffectiveStandbyMode(Boolean(standbyMode));
+     
+  }, [standbyMode]);
 
   useEffect(() => {
     const timer = setTimeout(() => setEffectiveOverlayEffect(overlayEffect || 'none'), getApplyDelayMs(overlayApplyAt));
