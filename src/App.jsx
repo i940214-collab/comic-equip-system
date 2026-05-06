@@ -61,7 +61,7 @@ import {
 // --- Firebase 配置 ---
 // The real Firebase config is loaded at runtime from firebase-config.json.
 // Keep API keys out of the repository to avoid GitHub secret scanning alerts.
-const DEFAULT_APP_ID = 'exhibition-system-0214';
+const DEFAULT_APP_ID = 'comic-equip-system-20260506';
 const firebaseConfig = typeof window !== 'undefined' ? window.FIREBASE_CONFIG : null;
 const hasFirebaseConfig = Boolean(firebaseConfig?.apiKey && firebaseConfig?.projectId && firebaseConfig?.appId);
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
@@ -101,11 +101,23 @@ const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
-const SYNC_COMMAND_LEAD_MS = 180; const MAX_SYNC_WAIT_MS = 1200;
+const BEZEL_GAP_MAX = 400;
+const SYNC_COMMAND_LEAD_MS = 180;
+const MAX_SYNC_WAIT_MS = 1200;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
-const getApplyDelayMs = (applyAt) => { const targetTime = Number(applyAt) || 0; if (!targetTime) return 0; const delay = targetTime - Date.now(); return Math.max(0, Math.min(delay, MAX_SYNC_WAIT_MS)); }; const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => { const parsed = Number(remoteTs) || now; if (parsed > now + MAX_SYNC_WAIT_MS) return now; return parsed; };
+const getApplyDelayMs = (applyAt) => {
+  const targetTs = Number(applyAt) || 0;
+  if (targetTs <= 0) return 0;
+  const delay = targetTs - Date.now();
+  return Math.max(0, Math.min(delay, MAX_SYNC_WAIT_MS));
+};
+const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+  const parsed = Number(remoteTs) || now;
+  if (parsed > now + MAX_SYNC_WAIT_MS) return now;
+  return parsed;
+};
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 
@@ -279,7 +291,8 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
     };
   }
 
-  const safeStartTime = getSafeRemoteTimestamp(globalState.startTime, now); const elapsedSecs = Math.max(0, (now - safeStartTime) / 1000);
+  const safeStartTime = getSafeRemoteTimestamp(globalState.startTime, now);
+  const elapsedSecs = Math.max(0, (now - safeStartTime) / 1000);
   const cycleElapsed = elapsedSecs % totalDuration;
   let accumulated = 0;
   let sceneIndex = 0;
@@ -1150,7 +1163,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                           <label className="text-xs font-bold text-slate-600 flex items-center gap-1"><MonitorOff size={12}/> 電視實體邊框補償 (Bezel Gap)</label>
                           <span className="text-xs font-mono text-slate-400">{activeScene.bezelGap || 0} px</span>
                         </div>
-                        <input type="range" min="0" max="150" value={activeScene.bezelGap || 0} onChange={e => updateScene(activeScene.id, { bezelGap: parseInt(e.target.value) })} className="w-full accent-blue-600" />
+                        <input type="range" min="0" max={BEZEL_GAP_MAX} value={activeScene.bezelGap || 0} onChange={e => updateScene(activeScene.id, { bezelGap: parseInt(e.target.value) })} className="w-full accent-blue-600" />
                         <p className="text-[10px] text-slate-400 mt-1">如果跨越電視的圖片或文字出現錯位，請微調此拉桿吃掉實體邊框的距離。</p>
                      </div>
                   </div>
@@ -1590,7 +1603,6 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     startTime = Date.now(),
     marquee,
     standbyMode,
-     
     bgm,
     fxTrigger,
     bulletChats,
@@ -1636,8 +1648,8 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
 
   useEffect(() => {
+    // Standby should react immediately once the synced state arrives.
     setEffectiveStandbyMode(Boolean(standbyMode));
-     
   }, [standbyMode]);
 
   useEffect(() => {
