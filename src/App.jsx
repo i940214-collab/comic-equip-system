@@ -102,8 +102,9 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const BEZEL_GAP_MAX = 400;
-const SYNC_COMMAND_LEAD_MS = 180;
+const SYNC_COMMAND_LEAD_MS = 280;
 const MAX_SYNC_WAIT_MS = 1200;
+const CLOUD_WRITE_DEBOUNCE_MS = 140;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
@@ -461,6 +462,52 @@ export default function App() {
     displayStatus: hasFirebaseConfig ? 'pending' : 'local',
     reason: hasFirebaseConfig ? '' : 'Firebase runtime config missing',
   });
+  const pendingCloudUpdatesRef = useRef(null);
+  const cloudFlushTimerRef = useRef(null);
+  const cloudWriteChainRef = useRef(Promise.resolve());
+
+  const clearScheduledCloudFlush = () => {
+    if (!cloudFlushTimerRef.current) return;
+    clearTimeout(cloudFlushTimerRef.current);
+    cloudFlushTimerRef.current = null;
+  };
+
+  const enqueueCloudWrite = (payload, immediate = false) => {
+    if (!db || !payload || Object.keys(payload).length === 0) return Promise.resolve();
+    const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
+    if (immediate) {
+      return setDoc(stateDoc, payload, { merge: true }).catch((error) => {
+        console.error("Update error:", error);
+      });
+    }
+    cloudWriteChainRef.current = cloudWriteChainRef.current
+      .catch(() => null)
+      .then(() => setDoc(stateDoc, payload, { merge: true }))
+      .catch((error) => console.error("Update error:", error));
+    return cloudWriteChainRef.current;
+  };
+
+  const flushPendingCloudUpdates = () => {
+    const payload = pendingCloudUpdatesRef.current;
+    pendingCloudUpdatesRef.current = null;
+    clearScheduledCloudFlush();
+    if (!payload || Object.keys(payload).length === 0) return;
+    enqueueCloudWrite(payload);
+  };
+
+  const scheduleCloudFlush = () => {
+    if (cloudFlushTimerRef.current) return;
+    cloudFlushTimerRef.current = setTimeout(() => {
+      cloudFlushTimerRef.current = null;
+      flushPendingCloudUpdates();
+    }, CLOUD_WRITE_DEBOUNCE_MS);
+  };
+
+  useEffect(() => () => {
+    if (!cloudFlushTimerRef.current) return;
+    clearTimeout(cloudFlushTimerRef.current);
+    cloudFlushTimerRef.current = null;
+  }, []);
 
   useEffect(() => {
     const manifestUrl = new URL('assets/library.json', window.location.href);
@@ -661,23 +708,30 @@ export default function App() {
     };
   }, [user, localMode]);
 
-  const updateGlobalState = async (updates) => {
+  const updateGlobalState = (updates, options = {}) => {
     if (!user) return;
+    const { immediate = false } = options;
+    setGlobalState(prev => ({ ...prev, ...updates }));
     if (localMode) {
-      setGlobalState(prev => ({ ...prev, ...updates }));
       return;
     }
     if (!db) {
-      setGlobalState(prev => ({ ...prev, ...updates }));
       setLocalMode(true);
       setLocalModeReason("Firestore is not available");
       setSyncInfo(prev => ({ ...prev, mode: 'local', data: 'missing-db', displayStatus: 'local', reason: 'Firestore is not available' }));
       return;
     }
-    try {
-      const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
-      await setDoc(stateDoc, updates, { merge: true });
-    } catch (error) { console.error("Update error:", error); }
+
+    if (immediate) {
+      const mergedPayload = { ...(pendingCloudUpdatesRef.current || {}), ...updates };
+      pendingCloudUpdatesRef.current = null;
+      clearScheduledCloudFlush();
+      enqueueCloudWrite(mergedPayload, true);
+      return;
+    }
+
+    pendingCloudUpdatesRef.current = { ...(pendingCloudUpdatesRef.current || {}), ...updates };
+    scheduleCloudFlush();
   };
 
   if (loading) return (
@@ -782,10 +836,10 @@ function ChatClientView({ globalState, updateGlobalState, onExit }) {
     if (!text.trim()) return;
     const currentChats = globalState.bulletChats.messages || [];
     const newChat = { id: Date.now(), text: text.trim(), color: ['#fff', '#60a5fa', '#34d399', '#f472b6', '#fbbf24'][Math.floor(Math.random()*5)] };
-    updateGlobalState({ 
+    updateGlobalState({
       bulletChats: { ...globalState.bulletChats, messages: [...currentChats.slice(-19), newChat] },
       stats: { ...globalState.stats, chatCount: (globalState.stats?.chatCount || 0) + 1 }
-    });
+    }, { immediate: true });
     setText('');
   };
 
@@ -793,7 +847,7 @@ function ChatClientView({ globalState, updateGlobalState, onExit }) {
     const id = Date.now() + Math.random();
     setFlyHearts(prev => [...prev, id]);
     setTimeout(() => setFlyHearts(prev => prev.filter(h => h !== id)), 1000);
-    updateGlobalState({ stats: { ...globalState.stats, likes: (globalState.stats?.likes || 0) + 1 } });
+    updateGlobalState({ stats: { ...globalState.stats, likes: (globalState.stats?.likes || 0) + 1 } }, { immediate: true });
   };
 
   return (
@@ -865,22 +919,22 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const commitMarqueeDraft = () => {
     const nextText = marqueeDraft.trim();
     if (nextText === (marquee?.text || '')) return;
-    updateGlobalState({ marquee: { ...marquee, text: nextText } });
+    updateGlobalState({ marquee: { ...marquee, text: nextText } }, { immediate: true });
   };
 
   const commitBgmUrlDraft = () => {
     const nextUrl = bgmUrlDraft.trim();
     if (nextUrl === (bgm?.url || '')) return;
-    updateGlobalState({ bgm: { ...bgm, url: nextUrl } });
+    updateGlobalState({ bgm: { ...bgm, url: nextUrl } }, { immediate: true });
   };
 
-  const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: getFutureSyncTimestamp() });
-  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() });
-  const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } });
-  const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: getFutureSyncTimestamp() } });
-  const toggleChats = () => updateGlobalState({ bulletChats: { ...bulletChats, active: !bulletChats.active, applyAt: getFutureSyncTimestamp() } });
-  const toggleMarquee = () => updateGlobalState({ marquee: { ...marquee, text: marqueeDraft.trim(), active: !marquee.active, applyAt: getFutureSyncTimestamp() } });
-  const changeOverlayEffect = (nextEffect) => updateGlobalState({ overlayEffect: nextEffect, overlayApplyAt: getFutureSyncTimestamp() });
+  const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: getFutureSyncTimestamp() }, { immediate: true });
+  const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() }, { immediate: true });
+  const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
+  const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: getFutureSyncTimestamp() } }, { immediate: true });
+  const toggleChats = () => updateGlobalState({ bulletChats: { ...bulletChats, active: !bulletChats.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
+  const toggleMarquee = () => updateGlobalState({ marquee: { ...marquee, text: marqueeDraft.trim(), active: !marquee.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
+  const changeOverlayEffect = (nextEffect) => updateGlobalState({ overlayEffect: nextEffect, overlayApplyAt: getFutureSyncTimestamp() }, { immediate: true });
 
   const updateScene = (sceneId, updates) => updateGlobalState({ timeline: timeline.map(s => s.id === sceneId ? { ...s, ...updates } : s) });
   const updateScreenContent = (sceneId, screenId, field, value) => {
@@ -892,13 +946,13 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
 
   const addScene = () => {
     const newScene = { ...DEFAULT_SCENE, id: Date.now().toString(), name: `新場景 ${timeline.length + 1}` };
-    updateGlobalState({ timeline: [...timeline, newScene] });
+    updateGlobalState({ timeline: [...timeline, newScene] }, { immediate: true });
     setSelectedSceneId(newScene.id);
   };
   const deleteScene = (id) => {
     if (timeline.length <= 1) return alert("至少需要一個場景");
     const newTl = timeline.filter(s => s.id !== id);
-    updateGlobalState({ timeline: newTl });
+    updateGlobalState({ timeline: newTl }, { immediate: true });
     if (selectedSceneId === id) setSelectedSceneId(newTl[0]?.id);
   };
 
@@ -907,7 +961,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     if (!inputTarget) return;
     if (inputTarget.isBgm) {
       setBgmUrlDraft(url);
-      updateGlobalState({ bgm: { ...bgm, url } });
+      updateGlobalState({ bgm: { ...bgm, url } }, { immediate: true });
     }
     else if (inputTarget.isSpan) updateScene(inputTarget.sceneId, { [inputTarget.field]: url });
     else updateScreenContent(inputTarget.sceneId, inputTarget.screenId, inputTarget.field, url);
@@ -1613,6 +1667,15 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   const bgmRef = useRef(null);
   const fxRef = useRef(null);
   const lastFxTimestampRef = useRef(0);
+  const heartbeatSnapshotRef = useRef({
+    sceneId: '',
+    sceneName: '未命名場景',
+    contentType: 'unknown',
+    isSpanMode: false,
+    isPlaying: false,
+    standbyMode: false,
+    audioUnlocked: false,
+  });
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [effectiveStandbyMode, setEffectiveStandbyMode] = useState(Boolean(standbyMode));
@@ -1640,7 +1703,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   };
   useEffect(() => {
     setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 250);
+    const timer = setInterval(() => setNow(Date.now()), 333);
     return () => clearInterval(timer);
   }, []);
 
@@ -1682,20 +1745,27 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   }, [bgm?.active, bgm?.url, bgm?.volume, bgm?.applyAt]);
 
   useEffect(() => {
+    const screenData = currentScene?.screens?.[id] || { type: currentScene?.spanType || 'unknown' };
+    heartbeatSnapshotRef.current = {
+      sceneId: currentScene?.id || '',
+      sceneName: currentScene?.name || '未命名場景',
+      contentType: currentScene?.isSpanMode ? currentScene?.spanType : screenData.type,
+      isSpanMode: Boolean(currentScene?.isSpanMode),
+      isPlaying: Boolean(isPlaying),
+      standbyMode: Boolean(standbyMode),
+      audioUnlocked: Boolean(audioUnlocked),
+    };
+  }, [id, currentScene, isPlaying, standbyMode, audioUnlocked]);
+
+  useEffect(() => {
     if (!id) return;
 
     const writeHeartbeat = () => {
-      const screenData = currentScene?.screens?.[id] || { type: currentScene?.spanType || 'unknown' };
+      const snapshot = heartbeatSnapshotRef.current || {};
       const payload = {
         screenId: id,
         lastSeen: Date.now(),
-        sceneId: currentScene?.id || '',
-        sceneName: currentScene?.name || '未命名場景',
-        contentType: currentScene?.isSpanMode ? currentScene?.spanType : screenData.type,
-        isSpanMode: Boolean(currentScene?.isSpanMode),
-        isPlaying,
-        standbyMode,
-        audioUnlocked,
+        ...snapshot,
         location: window.location.href,
       };
 
@@ -1711,7 +1781,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     writeHeartbeat();
     const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(heartbeatTimer);
-  }, [id, currentScene, isPlaying, standbyMode, audioUnlocked, db, appId, localMode]);
+  }, [id, db, appId, localMode]);
 
   useEffect(() => {
     let stream = null;
