@@ -6,6 +6,9 @@ import {
   setDoc, 
   onSnapshot,
   collection,
+  query,
+  orderBy,
+  limit,
   deleteDoc,
   addDoc
 } from 'firebase/firestore';
@@ -105,6 +108,8 @@ const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 280;
 const MAX_SYNC_WAIT_MS = 1200;
 const CLOUD_WRITE_DEBOUNCE_MS = 140;
+const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
+const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
@@ -121,6 +126,7 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
 };
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
+const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
 
 const loadImageElement = (file) => new Promise((resolve, reject) => {
   const imageUrl = URL.createObjectURL(file);
@@ -710,8 +716,11 @@ export default function App() {
 
   const updateGlobalState = (updates, options = {}) => {
     if (!user) return;
-    const { immediate = false } = options;
+    const { immediate = false, skipCloud = false } = options;
     setGlobalState(prev => ({ ...prev, ...updates }));
+    if (skipCloud) {
+      return;
+    }
     if (localMode) {
       return;
     }
@@ -890,6 +899,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const [now, setNow] = useState(Date.now());
   const [marqueeDraft, setMarqueeDraft] = useState(marquee?.text || '');
   const [bgmUrlDraft, setBgmUrlDraft] = useState(bgm?.url || '');
+  const liveBezelEmitRef = useRef({ sceneId: '', value: null, sentAt: 0 });
 
   const activeScene = timeline.find(s => s.id === selectedSceneId) || timeline[0] || DEFAULT_SCENE;
   const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
@@ -936,12 +946,40 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const toggleMarquee = () => updateGlobalState({ marquee: { ...marquee, text: marqueeDraft.trim(), active: !marquee.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
   const changeOverlayEffect = (nextEffect) => updateGlobalState({ overlayEffect: nextEffect, overlayApplyAt: getFutureSyncTimestamp() }, { immediate: true });
 
-  const updateScene = (sceneId, updates) => updateGlobalState({ timeline: timeline.map(s => s.id === sceneId ? { ...s, ...updates } : s) });
+  const updateScene = (sceneId, updates, options = {}) => updateGlobalState({ timeline: timeline.map(s => s.id === sceneId ? { ...s, ...updates } : s) }, options);
   const updateScreenContent = (sceneId, screenId, field, value) => {
     updateGlobalState({ timeline: timeline.map(s => {
       if (s.id !== sceneId) return s;
       return { ...s, screens: { ...s.screens, [screenId]: { ...s.screens[screenId], [field]: value } } };
     })});
+  };
+
+  const emitLiveBezelGap = (sceneId, bezelGap, force = false) => {
+    if (!db || localMode || !sceneId) return;
+    const value = clampBezelGap(bezelGap);
+    const nowTs = Date.now();
+    const last = liveBezelEmitRef.current;
+    if (!force && last.sceneId === sceneId && last.value === value) return;
+    if (!force && nowTs - last.sentAt < LIVE_BEZEL_EMIT_INTERVAL_MS) return;
+    liveBezelEmitRef.current = { sceneId, value, sentAt: nowTs };
+    addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'liveCommands'), {
+      type: 'bezel-gap',
+      sceneId,
+      value,
+      createdAt: nowTs,
+    }).catch(error => console.warn("Live bezel sync failed:", error));
+  };
+
+  const handleBezelGapInput = (sceneId, nextValue) => {
+    const bezelGap = clampBezelGap(nextValue);
+    updateScene(sceneId, { bezelGap }, { skipCloud: true });
+    emitLiveBezelGap(sceneId, bezelGap);
+  };
+
+  const commitBezelGap = (sceneId, nextValue) => {
+    const bezelGap = clampBezelGap(nextValue);
+    updateScene(sceneId, { bezelGap }, { immediate: true });
+    emitLiveBezelGap(sceneId, bezelGap, true);
   };
 
   const addScene = () => {
@@ -1217,7 +1255,22 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                           <label className="text-xs font-bold text-slate-600 flex items-center gap-1"><MonitorOff size={12}/> 電視實體邊框補償 (Bezel Gap)</label>
                           <span className="text-xs font-mono text-slate-400">{activeScene.bezelGap || 0} px</span>
                         </div>
-                        <input type="range" min="0" max={BEZEL_GAP_MAX} value={activeScene.bezelGap || 0} onChange={e => updateScene(activeScene.id, { bezelGap: parseInt(e.target.value) })} className="w-full accent-blue-600" />
+                        <input
+                          type="range"
+                          min="0"
+                          max={BEZEL_GAP_MAX}
+                          value={activeScene.bezelGap || 0}
+                          onInput={e => handleBezelGapInput(activeScene.id, e.currentTarget.value)}
+                          onMouseUp={e => commitBezelGap(activeScene.id, e.currentTarget.value)}
+                          onTouchEnd={e => commitBezelGap(activeScene.id, e.currentTarget.value)}
+                          onBlur={e => commitBezelGap(activeScene.id, e.currentTarget.value)}
+                          onKeyUp={e => {
+                            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+                              commitBezelGap(activeScene.id, e.currentTarget.value);
+                            }
+                          }}
+                          className="w-full accent-blue-600"
+                        />
                         <p className="text-[10px] text-slate-400 mt-1">如果跨越電視的圖片或文字出現錯位，請微調此拉桿吃掉實體邊框的距離。</p>
                      </div>
                   </div>
@@ -1690,6 +1743,7 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     url: bgm?.url || '',
     volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
   });
+  const [liveBezelOverride, setLiveBezelOverride] = useState(null);
 
   const handleUnlockAndFullscreen = () => {
     setAudioUnlocked(true);
@@ -1756,6 +1810,27 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
       audioUnlocked: Boolean(audioUnlocked),
     };
   }, [id, currentScene, isPlaying, standbyMode, audioUnlocked]);
+
+  useEffect(() => {
+    if (!db || localMode) {
+      setLiveBezelOverride(null);
+      return;
+    }
+    const liveCmdCol = collection(db, 'artifacts', appId, 'public', 'data', 'liveCommands');
+    const liveCmdQuery = query(liveCmdCol, orderBy('createdAt', 'desc'), limit(1));
+    return onSnapshot(liveCmdQuery, (snap) => {
+      if (snap.empty) return;
+      const latest = snap.docs[0]?.data();
+      if (!latest || latest.type !== 'bezel-gap') return;
+      setLiveBezelOverride({
+        sceneId: latest.sceneId || '',
+        value: clampBezelGap(latest.value),
+        createdAt: Number(latest.createdAt) || Date.now(),
+      });
+    }, (error) => {
+      console.warn("Live bezel listener error:", error);
+    });
+  }, [db, appId, localMode]);
 
   useEffect(() => {
     if (!id) return;
@@ -1859,7 +1934,12 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
 
   const screenData = currentScene.screens?.[id] || { type: 'color', content: '#000' };
   const transitionClass = TRANSITIONS.find(t => t.id === currentScene.transition)?.class || 'animate-in fade-in duration-1000';
-  const bezelGap = currentScene.bezelGap || 0;
+  const liveBezelStillFresh = Boolean(
+    liveBezelOverride &&
+    liveBezelOverride.sceneId === currentScene.id &&
+    Date.now() - liveBezelOverride.createdAt <= LIVE_BEZEL_OVERRIDE_TTL_MS
+  );
+  const bezelGap = liveBezelStillFresh ? clampBezelGap(liveBezelOverride.value) : (currentScene.bezelGap || 0);
   const spanTotalWidth = `calc(300vw + ${bezelGap * 2}px)`;
   const spanLeftOffset = id === '1' ? '0px' : id === '2' ? `calc(-100vw - ${bezelGap}px)` : `calc(-200vw - ${bezelGap * 2}px)`;
   const spanAnimationClass = currentScene.spanAnimation ? 'animate-ken-burns' : '';
