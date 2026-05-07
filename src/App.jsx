@@ -6,9 +6,6 @@ import {
   setDoc, 
   onSnapshot,
   collection,
-  query,
-  orderBy,
-  limit,
   deleteDoc,
   addDoc
 } from 'firebase/firestore';
@@ -962,12 +959,13 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     if (!force && last.sceneId === sceneId && last.value === value) return;
     if (!force && nowTs - last.sentAt < LIVE_BEZEL_EMIT_INTERVAL_MS) return;
     liveBezelEmitRef.current = { sceneId, value, sentAt: nowTs };
-    addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'liveCommands'), {
+    const liveBezelDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'bezelGap');
+    setDoc(liveBezelDoc, {
       type: 'bezel-gap',
       sceneId,
       value,
-      createdAt: nowTs,
-    }).catch(error => console.warn("Live bezel sync failed:", error));
+      updatedAt: nowTs,
+    }, { merge: true }).catch(error => console.warn("Live bezel sync failed:", error));
   };
 
   const handleBezelGapInput = (sceneId, nextValue) => {
@@ -1816,16 +1814,15 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
       setLiveBezelOverride(null);
       return;
     }
-    const liveCmdCol = collection(db, 'artifacts', appId, 'public', 'data', 'liveCommands');
-    const liveCmdQuery = query(liveCmdCol, orderBy('createdAt', 'desc'), limit(1));
-    return onSnapshot(liveCmdQuery, (snap) => {
-      if (snap.empty) return;
-      const latest = snap.docs[0]?.data();
+    const liveBezelDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'bezelGap');
+    return onSnapshot(liveBezelDoc, (snap) => {
+      if (!snap.exists()) return;
+      const latest = snap.data();
       if (!latest || latest.type !== 'bezel-gap') return;
       setLiveBezelOverride({
         sceneId: latest.sceneId || '',
         value: clampBezelGap(latest.value),
-        createdAt: Number(latest.createdAt) || Date.now(),
+        createdAt: Number(latest.updatedAt) || Date.now(),
       });
     }, (error) => {
       console.warn("Live bezel listener error:", error);
