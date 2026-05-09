@@ -109,6 +109,7 @@ const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
 const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
+const ASSET_REF_PREFIX = 'asset://';
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
 const getApplyDelayMs = (applyAt) => {
   const targetTs = Number(applyAt) || 0;
@@ -124,6 +125,70 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
+const toAssetRef = (id) => `${ASSET_REF_PREFIX}${id}`;
+const parseAssetRef = (value = '') => {
+  if (typeof value !== 'string' || !value.startsWith(ASSET_REF_PREFIX)) return null;
+  const id = value.slice(ASSET_REF_PREFIX.length).trim();
+  return id || null;
+};
+const resolveAssetContent = (value = '', assetUrlById = {}) => {
+  const assetId = parseAssetRef(value);
+  if (!assetId) return value;
+  return assetUrlById[assetId] || '';
+};
+const toAssetRefIfMatched = (value = '', assetIdByUrl = {}) => {
+  if (typeof value !== 'string' || !value) return value;
+  if (parseAssetRef(value)) return value;
+  const matchedAssetId = assetIdByUrl[value];
+  return matchedAssetId ? toAssetRef(matchedAssetId) : value;
+};
+const rewriteSceneAssetRefs = (scene, assetIdByUrl = {}) => {
+  if (!scene || typeof scene !== 'object') return scene;
+  let changed = false;
+  let nextScene = scene;
+
+  if (typeof scene.spanContent === 'string') {
+    const nextSpanContent = toAssetRefIfMatched(scene.spanContent, assetIdByUrl);
+    if (nextSpanContent !== scene.spanContent) {
+      nextScene = { ...nextScene, spanContent: nextSpanContent };
+      changed = true;
+    }
+  }
+
+  if (scene.screens && typeof scene.screens === 'object') {
+    let screensChanged = false;
+    const nextScreens = {};
+    Object.entries(scene.screens).forEach(([screenId, screenData]) => {
+      if (!screenData || typeof screenData !== 'object') {
+        nextScreens[screenId] = screenData;
+        return;
+      }
+      const nextContent = toAssetRefIfMatched(screenData.content, assetIdByUrl);
+      if (nextContent !== screenData.content) {
+        screensChanged = true;
+        nextScreens[screenId] = { ...screenData, content: nextContent };
+      } else {
+        nextScreens[screenId] = screenData;
+      }
+    });
+    if (screensChanged) {
+      nextScene = { ...nextScene, screens: nextScreens };
+      changed = true;
+    }
+  }
+
+  return changed ? nextScene : scene;
+};
+const rewriteTimelineAssetRefs = (timeline, assetIdByUrl = {}) => {
+  if (!Array.isArray(timeline)) return timeline;
+  let changed = false;
+  const nextTimeline = timeline.map((scene) => {
+    const nextScene = rewriteSceneAssetRefs(scene, assetIdByUrl);
+    if (nextScene !== scene) changed = true;
+    return nextScene;
+  });
+  return changed ? nextTimeline : timeline;
+};
 
 const loadImageElement = (file) => new Promise((resolve, reject) => {
   const imageUrl = URL.createObjectURL(file);
@@ -448,6 +513,7 @@ export default function App() {
   const [viewMode, setViewMode] = useState('select'); 
   const [screenId, setScreenId] = useState(null);
   const [globalState, setGlobalState] = useState(DEFAULT_STATE);
+  const globalStateRef = useRef(DEFAULT_STATE);
   const [staticAssets, setStaticAssets] = useState([]);
   const [assets, setAssets] = useState([]);
   const [displayStatuses, setDisplayStatuses] = useState({});
@@ -468,6 +534,11 @@ export default function App() {
   const pendingCloudUpdatesRef = useRef(null);
   const cloudFlushTimerRef = useRef(null);
   const cloudWriteChainRef = useRef(Promise.resolve());
+  const assetIdByUrlRef = useRef({});
+
+  useEffect(() => {
+    globalStateRef.current = globalState;
+  }, [globalState]);
 
   const clearScheduledCloudFlush = () => {
     if (!cloudFlushTimerRef.current) return;
@@ -528,6 +599,18 @@ export default function App() {
       return true;
     });
   }, [staticAssets, assets]);
+  const assetIdByUrl = useMemo(() => {
+    const map = {};
+    libraryAssets.forEach((asset) => {
+      if (!asset?.id || !asset?.url) return;
+      map[asset.url] = asset.id;
+    });
+    return map;
+  }, [libraryAssets]);
+
+  useEffect(() => {
+    assetIdByUrlRef.current = assetIdByUrl;
+  }, [assetIdByUrl]);
 
   // 1. 初始化 Auth
   useEffect(() => {
@@ -605,11 +688,13 @@ export default function App() {
   // 2. 監聽 Firestore 數據
   useEffect(() => {
     if (localMode) {
-      setGlobalState(prev => ({
+      const nextState = {
         ...DEFAULT_STATE,
-        ...prev,
-        timeline: Array.isArray(prev.timeline) && prev.timeline.length > 0 ? prev.timeline : [DEFAULT_SCENE],
-      }));
+        ...globalStateRef.current,
+        timeline: Array.isArray(globalStateRef.current.timeline) && globalStateRef.current.timeline.length > 0 ? globalStateRef.current.timeline : [DEFAULT_SCENE],
+      };
+      globalStateRef.current = nextState;
+      setGlobalState(nextState);
       setLoading(false);
       return;
     }
@@ -631,15 +716,18 @@ export default function App() {
       clearTimeout(dataWarnTimeout);
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setGlobalState({
+        const nextState = {
           ...DEFAULT_STATE,
           ...data,
           timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
           bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
           stats: data.stats || { chatCount: 0, likes: 0 }
-        });
+        };
+        globalStateRef.current = nextState;
+        setGlobalState(nextState);
       } else {
         setDoc(stateDoc, DEFAULT_STATE).catch(e => console.error("Initial setDoc failed:", e));
+        globalStateRef.current = DEFAULT_STATE;
         setGlobalState(DEFAULT_STATE);
       }
       setLoading(false);
@@ -711,10 +799,28 @@ export default function App() {
     };
   }, [user, localMode]);
 
-  const updateGlobalState = (updates, options = {}) => {
+  const updateGlobalState = (updatesOrFactory, options = {}) => {
     if (!user) return;
     const { immediate = false, skipCloud = false } = options;
-    setGlobalState(prev => ({ ...prev, ...updates }));
+    const baseState = globalStateRef.current;
+    const updates = typeof updatesOrFactory === 'function'
+      ? updatesOrFactory(baseState)
+      : updatesOrFactory;
+    if (!updates || typeof updates !== 'object') return;
+    let nextState = { ...baseState, ...updates };
+    let timelineWasRewritten = false;
+    if (Array.isArray(nextState.timeline)) {
+      const rewrittenTimeline = rewriteTimelineAssetRefs(nextState.timeline, assetIdByUrlRef.current);
+      if (rewrittenTimeline !== nextState.timeline) {
+        timelineWasRewritten = true;
+        nextState = { ...nextState, timeline: rewrittenTimeline };
+      }
+    }
+    const cloudUpdates = timelineWasRewritten
+      ? { ...updates, timeline: nextState.timeline }
+      : updates;
+    globalStateRef.current = nextState;
+    setGlobalState(nextState);
     if (skipCloud) {
       return;
     }
@@ -729,14 +835,14 @@ export default function App() {
     }
 
     if (immediate) {
-      const mergedPayload = { ...(pendingCloudUpdatesRef.current || {}), ...updates };
+      const mergedPayload = { ...(pendingCloudUpdatesRef.current || {}), ...cloudUpdates };
       pendingCloudUpdatesRef.current = null;
       clearScheduledCloudFlush();
       enqueueCloudWrite(mergedPayload, true);
       return;
     }
 
-    pendingCloudUpdatesRef.current = { ...(pendingCloudUpdatesRef.current || {}), ...updates };
+    pendingCloudUpdatesRef.current = { ...(pendingCloudUpdatesRef.current || {}), ...cloudUpdates };
     scheduleCloudFlush();
   };
 
@@ -826,7 +932,7 @@ export default function App() {
   // --- 各模式組件渲染 ---
   if (viewMode === 'chat-client') return <ChatClientView globalState={globalState} updateGlobalState={updateGlobalState} onExit={() => setViewMode('select')} />;
   if (viewMode === 'controller') return <ControllerView globalState={globalState} updateGlobalState={updateGlobalState} assets={libraryAssets} setAssets={setAssets} db={db} storage={storage} appId={appId} localMode={localMode} localModeReason={localModeReason} syncInfo={syncInfo} displayStatuses={displayStatuses} onExit={() => setViewMode('select')} />;
-  if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} db={db} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
+  if (viewMode === 'display') return <DisplayScreen id={screenId} globalState={globalState} assets={libraryAssets} db={db} appId={appId} localMode={localMode} onExit={() => setViewMode('select')} />;
   
   return null;
 }
@@ -900,6 +1006,18 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
 
   const activeScene = timeline.find(s => s.id === selectedSceneId) || timeline[0] || DEFAULT_SCENE;
   const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
+  const assetUrlById = useMemo(() => {
+    const map = {};
+    (assets || []).forEach((asset) => {
+      if (!asset?.id || !asset?.url) return;
+      map[asset.id] = asset.url;
+    });
+    return map;
+  }, [assets]);
+  const activeScenePreview = useMemo(() => ({
+    ...activeScene,
+    spanContent: resolveAssetContent(activeScene?.spanContent || '', assetUrlById),
+  }), [activeScene, assetUrlById]);
   const connectedScreens = useMemo(() => SCREEN_IDS.map(id => {
     const status = displayStatuses?.[id] || {};
     const lastSeen = Number(status.lastSeen) || 0;
@@ -943,12 +1061,24 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const toggleMarquee = () => updateGlobalState({ marquee: { ...marquee, text: marqueeDraft.trim(), active: !marquee.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
   const changeOverlayEffect = (nextEffect) => updateGlobalState({ overlayEffect: nextEffect, overlayApplyAt: getFutureSyncTimestamp() }, { immediate: true });
 
-  const updateScene = (sceneId, updates, options = {}) => updateGlobalState({ timeline: timeline.map(s => s.id === sceneId ? { ...s, ...updates } : s) }, options);
+  const updateScene = (sceneId, updates, options = {}) => updateGlobalState((prev) => ({
+    timeline: (prev.timeline || []).map(s => s.id === sceneId ? { ...s, ...updates } : s)
+  }), options);
   const updateScreenContent = (sceneId, screenId, field, value) => {
-    updateGlobalState({ timeline: timeline.map(s => {
-      if (s.id !== sceneId) return s;
-      return { ...s, screens: { ...s.screens, [screenId]: { ...s.screens[screenId], [field]: value } } };
-    })});
+    updateGlobalState((prev) => ({
+      timeline: (prev.timeline || []).map(s => {
+        if (s.id !== sceneId) return s;
+        const currentScreens = s.screens || {};
+        const currentScreen = currentScreens[screenId] || { type: 'color', content: '#000' };
+        return {
+          ...s,
+          screens: {
+            ...currentScreens,
+            [screenId]: { ...currentScreen, [field]: value }
+          }
+        };
+      })
+    }));
   };
 
   const emitLiveBezelGap = (sceneId, bezelGap, force = false) => {
@@ -993,14 +1123,17 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   };
 
   const openLib = (target) => { setInputTarget(target); setLibraryOpen(true); };
-  const handleLibSelect = (url) => {
+  const handleLibSelect = (selection) => {
     if (!inputTarget) return;
+    const selectedUrl = typeof selection === 'string' ? selection : selection?.url;
+    const selectedRef = selection?.id ? toAssetRef(selection.id) : selectedUrl;
+    if (!selectedUrl) return;
     if (inputTarget.isBgm) {
-      setBgmUrlDraft(url);
-      updateGlobalState({ bgm: { ...bgm, url } }, { immediate: true });
+      setBgmUrlDraft(selectedUrl);
+      updateGlobalState({ bgm: { ...bgm, url: selectedUrl } }, { immediate: true });
     }
-    else if (inputTarget.isSpan) updateScene(inputTarget.sceneId, { [inputTarget.field]: url });
-    else updateScreenContent(inputTarget.sceneId, inputTarget.screenId, inputTarget.field, url);
+    else if (inputTarget.isSpan) updateScene(inputTarget.sceneId, { [inputTarget.field]: selectedRef });
+    else updateScreenContent(inputTarget.sceneId, inputTarget.screenId, inputTarget.field, selectedRef);
     setLibraryOpen(false); setInputTarget(null);
   };
 
@@ -1283,7 +1416,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                        <div className="flex-1 relative">
                           <input 
                             type="text" 
-                            value={activeScene.spanContent || ''} 
+                            value={resolveAssetContent(activeScene.spanContent || '', assetUrlById)} 
                             onChange={(e) => updateScene(activeScene.id, { spanContent: e.target.value })} 
                             placeholder={activeScene.spanType === 'text' ? "請輸入要橫跨三台螢幕的巨型文字..." : "輸入網址..."}
                             className="w-full pl-4 pr-24 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-blue-400" 
@@ -1295,18 +1428,19 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                      </div>
                   </div>
 
-                  <SpanModePreviewGrid scene={activeScene} />
+                  <SpanModePreviewGrid scene={activeScenePreview} />
                 </div>
               ) : (
                 <div className="grid xl:grid-cols-3 gap-6 animate-in fade-in duration-300">
                   {['1', '2', '3'].map(id => {
                     const screenCfg = activeScene.screens?.[id] || { type: 'color', content: '#000' };
+                    const screenContentResolved = resolveAssetContent(screenCfg.content || '', assetUrlById);
                     return (
                       <div key={id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                         <div className="px-5 py-3 bg-slate-50 border-b font-medium text-sm text-slate-700">螢幕 {id}</div>
                         <div className="aspect-video bg-slate-900 relative">
                           {screenCfg.type === 'color' && <div className="absolute inset-0" style={{backgroundColor: screenCfg.content}} />}
-                          {screenCfg.type === 'image' && <img src={screenCfg.content} className="w-full h-full object-cover opacity-90" alt="預覽" />}
+                          {screenCfg.type === 'image' && <img src={screenContentResolved} className="w-full h-full object-cover opacity-90" alt="預覽" />}
                           {screenCfg.type === 'video' && <div className="absolute inset-0 flex items-center justify-center text-white/50"><Play size={24} /></div>}
                           {screenCfg.type === 'text' && <div className="absolute inset-0 flex items-center justify-center text-white text-sm font-medium p-4 text-center">{screenCfg.content || '文字'}</div>}
                           {screenCfg.type === 'camera' && <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 bg-slate-800"><Camera size={32} className="mb-2"/><span className="text-xs font-light">鏡頭實況</span></div>}
@@ -1328,7 +1462,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
                               <div className="text-xs text-slate-500 text-center py-2 bg-slate-50 rounded-xl font-light">將調用顯示端裝置攝影機</div>
                             ) : (
                               <>
-                                <input type="text" value={screenCfg.content || ''} onChange={(e) => updateScreenContent(activeScene.id, id, 'content', e.target.value)} placeholder="輸入網址或內容..." className="w-full pl-3 pr-16 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-blue-400 transition-colors" />
+                                <input type="text" value={screenContentResolved || ''} onChange={(e) => updateScreenContent(activeScene.id, id, 'content', e.target.value)} placeholder="輸入網址或內容..." className="w-full pl-3 pr-16 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white focus:border-blue-400 transition-colors" />
                                 {['video', 'image', 'iframe'].includes(screenCfg.type) && (
                                   <button onClick={() => openLib({ sceneId: activeScene.id, screenId: id, field: 'content' })} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] font-medium bg-slate-200 text-slate-600 px-2 py-1 rounded hover:bg-slate-300 transition-colors">素材庫</button>
                                 )}
@@ -1637,7 +1771,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                     <div className="text-[10px] text-slate-400 truncate mb-4 bg-slate-50 p-2 rounded-lg border border-slate-100">{asset.url}</div>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => onSelect(asset.url)} className="flex-1 bg-slate-50 hover:bg-blue-50 text-blue-600 font-medium text-xs py-2.5 rounded-xl transition-colors border border-slate-100 hover:border-blue-200">選用</button>
+                    <button onClick={() => onSelect(asset)} className="flex-1 bg-slate-50 hover:bg-blue-50 text-blue-600 font-medium text-xs py-2.5 rounded-xl transition-colors border border-slate-100 hover:border-blue-200">選用</button>
                     {!asset.static && (
                       <button onClick={() => handleDelete(asset.id)} className="px-3 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors rounded-xl border border-transparent hover:border-red-100"><Trash2 size={16}/></button>
                     )}
@@ -1701,7 +1835,7 @@ function OverlayEffects({ type }) {
 // ==========================================
 // 子組件：顯示端螢幕
 // ==========================================
-function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
+function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }) {
   const {
     timeline = [DEFAULT_SCENE],
     isPlaying = false,
@@ -1742,6 +1876,14 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
     volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
   });
   const [liveBezelOverride, setLiveBezelOverride] = useState(null);
+  const assetUrlById = useMemo(() => {
+    const map = {};
+    (assets || []).forEach((asset) => {
+      if (!asset?.id || !asset?.url) return;
+      map[asset.id] = asset.url;
+    });
+    return map;
+  }, [assets]);
 
   const handleUnlockAndFullscreen = () => {
     setAudioUnlocked(true);
@@ -1930,6 +2072,8 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
   }
 
   const screenData = currentScene.screens?.[id] || { type: 'color', content: '#000' };
+  const resolvedScreenContent = resolveAssetContent(screenData.content || '', assetUrlById);
+  const resolvedSpanContent = resolveAssetContent(currentScene.spanContent || '', assetUrlById);
   const transitionClass = TRANSITIONS.find(t => t.id === currentScene.transition)?.class || 'animate-in fade-in duration-1000';
   const liveBezelStillFresh = Boolean(
     liveBezelOverride &&
@@ -1950,20 +2094,20 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
       <div key={sceneRenderKey} className={`absolute inset-0 flex items-center justify-center w-full h-full ${transitionClass}`}>
         {currentScene.isSpanMode ? (
           <>
-            {currentScene.spanType === 'image' && currentScene.spanContent && (
+            {currentScene.spanType === 'image' && resolvedSpanContent && (
                <div style={{ position: 'absolute', width: spanTotalWidth, height: '100vh', left: spanLeftOffset }}>
-                 <img src={currentScene.spanContent} className={`w-full h-full object-cover ${spanAnimationClass}`} />
+                 <img src={resolvedSpanContent} className={`w-full h-full object-cover ${spanAnimationClass}`} />
                </div>
             )}
-            {currentScene.spanType === 'video' && currentScene.spanContent && (
+            {currentScene.spanType === 'video' && resolvedSpanContent && (
                <div style={{ position: 'absolute', width: spanTotalWidth, height: '100vh', left: spanLeftOffset }}>
-                 <video src={currentScene.spanContent} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+                 <video src={resolvedSpanContent} autoPlay muted loop playsInline className="w-full h-full object-cover" />
                </div>
             )}
-            {currentScene.spanType === 'text' && currentScene.spanContent && (
+            {currentScene.spanType === 'text' && resolvedSpanContent && (
                <div className="flex items-center justify-center" style={{ position: 'absolute', width: spanTotalWidth, height: '100vh', left: spanLeftOffset }}>
                  <div className={`text-[25vw] font-black text-white text-center leading-none tracking-tight drop-shadow-2xl ${spanAnimationClass}`}>
-                   {currentScene.spanContent}
+                   {resolvedSpanContent}
                  </div>
                </div>
             )}
@@ -1971,18 +2115,18 @@ function DisplayScreen({ id, globalState, db, appId, localMode, onExit }) {
         ) : (
           <>
             {screenData.type === 'color' && <div className="w-full h-full transition-colors duration-1000" style={{ backgroundColor: screenData.content || '#000' }} />}
-            {screenData.type === 'image' && screenData.content && <img src={screenData.content} className="w-full h-full object-cover" />}
-            {screenData.type === 'video' && screenData.content && <video src={screenData.content} autoPlay muted loop playsInline className="w-full h-full object-cover" />}
-            {screenData.type === 'text' && <div className="text-[10vw] font-semibold text-white text-center leading-tight tracking-tight drop-shadow-2xl px-12">{screenData.content}</div>}
+            {screenData.type === 'image' && resolvedScreenContent && <img src={resolvedScreenContent} className="w-full h-full object-cover" />}
+            {screenData.type === 'video' && resolvedScreenContent && <video src={resolvedScreenContent} autoPlay muted loop playsInline className="w-full h-full object-cover" />}
+            {screenData.type === 'text' && <div className="text-[10vw] font-semibold text-white text-center leading-tight tracking-tight drop-shadow-2xl px-12">{resolvedScreenContent}</div>}
             {screenData.type === 'camera' && <video ref={cameraVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />}
             {screenData.type === 'qrcode' && (
               <div className="w-full h-full bg-white flex flex-col items-center justify-center p-12">
-                 {screenData.content ? (
-                   <><img src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(screenData.content)}`} className="w-[60vmin] h-[60vmin] shadow-xl rounded-xl" /><p className="mt-12 text-3xl font-bold text-slate-800 tracking-widest uppercase">SCAN TO INTERACT</p></>
+                 {resolvedScreenContent ? (
+                   <><img src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(resolvedScreenContent)}`} className="w-[60vmin] h-[60vmin] shadow-xl rounded-xl" /><p className="mt-12 text-3xl font-bold text-slate-800 tracking-widest uppercase">SCAN TO INTERACT</p></>
                  ) : <p className="text-3xl font-medium text-slate-300">URL REQUIRED</p>}
               </div>
             )}
-            {screenData.type === 'iframe' && screenData.content && <iframe src={screenData.content} className="w-full h-full border-none pointer-events-auto bg-white" sandbox="allow-scripts allow-same-origin allow-forms" />}
+            {screenData.type === 'iframe' && resolvedScreenContent && <iframe src={resolvedScreenContent} className="w-full h-full border-none pointer-events-auto bg-white" sandbox="allow-scripts allow-same-origin allow-forms" />}
           </>
         )}
       </div>
