@@ -1,0 +1,143 @@
+From 4bddd44c8234bc4b977a0689d1399e571071d743 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 00:01:29 +0800
+Subject: [PATCH] Fallback to direct video uploads
+
+---
+ src/App.jsx | 76 +++++++++++++++++++++++++++++++++++++----------------
+ 1 file changed, 54 insertions(+), 22 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index cb1ccad..43c0762 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -14,6 +14,7 @@ import {
+ import { 
+   getStorage, 
+   ref, 
++  uploadBytes,
+   uploadBytesResumable, 
+   getDownloadURL 
+ } from 'firebase/storage';
+@@ -117,7 +118,7 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+ const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+ const INLINE_IMAGE_MAX_DIMENSION = 1600;
+ const ASSET_REF_PREFIX = 'asset://';
+-const STORAGE_UPLOAD_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
++const STORAGE_RESUMABLE_FALLBACK_MS = 45 * 1000;
+ const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
+ const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+ const getApplyDelayMs = (applyAt) => {
+@@ -280,36 +281,67 @@ const compressImageForFirestore = async (file) => {
+ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
+   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
+-  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
+-  let settled = false;
+-  let idleTimer = null;
++  const metadata = { contentType: inferFileContentType(file) };
++  const uploadTask = uploadBytesResumable(fileRef, file, metadata);
++  let finished = false;
++  let directFallbackStarted = false;
++  let fallbackTimer = null;
+   let lastBytesTransferred = 0;
+   let lastProgressAt = performance.now();
+   let smoothedSpeedBps = 0;
+   const maxTimer = window.setTimeout(() => {
+-    if (settled) return;
+-    settled = true;
++    if (finished) return;
++    finished = true;
+     uploadTask.cancel();
++    cleanup();
+     reject(new Error('storage-upload-max-timeout'));
+   }, STORAGE_UPLOAD_MAX_TIMEOUT_MS);
++
+   const cleanup = () => {
+     window.clearTimeout(maxTimer);
+-    if (idleTimer) window.clearTimeout(idleTimer);
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++  };
++
++  const completeWithDirectUpload = async () => {
++    if (finished || directFallbackStarted) return;
++    directFallbackStarted = true;
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++    onStatus?.('可續傳連線沒有回應，改用直接上傳...');
++    uploadTask.cancel();
++    try {
++      const snapshot = await uploadBytes(fileRef, file, metadata);
++      if (finished) return;
++      onProgress({
++        progress: 100,
++        bytesTransferred: file.size || 0,
++        totalBytes: file.size || 0,
++        speedBps: 0,
++        etaSeconds: 0,
++      });
++      onStatus?.('取得影片網址...');
++      const downloadUrl = await getDownloadURL(snapshot.ref);
++      if (finished) return;
++      finished = true;
++      cleanup();
++      resolve(downloadUrl);
++    } catch (error) {
++      if (finished) return;
++      finished = true;
++      cleanup();
++      reject(error);
++    }
+   };
+-  const armIdleTimer = () => {
+-    if (idleTimer) window.clearTimeout(idleTimer);
+-    idleTimer = window.setTimeout(() => {
+-      if (settled) return;
+-      settled = true;
+-      uploadTask.cancel();
+-      reject(new Error('storage-upload-stalled'));
+-    }, STORAGE_UPLOAD_IDLE_TIMEOUT_MS);
++
++  const armFallbackTimer = () => {
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++    fallbackTimer = window.setTimeout(completeWithDirectUpload, STORAGE_RESUMABLE_FALLBACK_MS);
+   };
+-  armIdleTimer();
++
++  armFallbackTimer();
+   uploadTask.on('state_changed',
+     (snapshot) => {
+-      if (settled) return;
+-      armIdleTimer();
++      if (finished || directFallbackStarted) return;
++      armFallbackTimer();
+       const now = performance.now();
+       const elapsedSeconds = Math.max(0.001, (now - lastProgressAt) / 1000);
+       const bytesDelta = Math.max(0, snapshot.bytesTransferred - lastBytesTransferred);
+@@ -333,20 +365,20 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
+       if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
+     },
+     (error) => {
+-      if (settled) return;
+-      settled = true;
++      if (finished || directFallbackStarted) return;
++      finished = true;
+       cleanup();
+       reject(error);
+     },
+     async () => {
+       try {
+-        if (settled) return;
++        if (finished || directFallbackStarted) return;
+         onStatus?.('取得影片網址...');
+         resolve(await getDownloadURL(uploadTask.snapshot.ref));
+       } catch (error) {
+         reject(error);
+       } finally {
+-        settled = true;
++        finished = true;
+         cleanup();
+       }
+     }
+-- 
+2.50.1 (Apple Git-155)
+
