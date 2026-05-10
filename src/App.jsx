@@ -1532,9 +1532,10 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   const [newUrl, setNewUrl] = useState('');
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('video');
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [adding, setAdding] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [uploadItems, setUploadItems] = useState([]);
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
   const fileInputRef = useRef(null);
@@ -1554,9 +1555,16 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     }, 1200);
   };
 
-  const resetSelectedFile = () => {
-    setSelectedFile(null);
+  const resetSelectedFiles = () => {
+    setSelectedFiles([]);
+    setUploadItems([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const getFileId = (file, index) => `${file.name}-${file.size}-${file.lastModified}-${index}`;
+
+  const patchUploadItem = (id, updates) => {
+    setUploadItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
   const formatFileSize = (bytes = 0) => {
@@ -1617,85 +1625,117 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   };
 
   const handleUploadFile = async () => {
-    if (!selectedFile) return;
+    if (!selectedFiles.length) return;
     setAdding(true);
     setUploadError('');
     setUploadSuccess('');
     clearUploadProgressTimer();
-    setUploadProgress(4);
-    const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
-    const assetName = newName || selectedFile.name;
-    let shouldKeepProgress = false;
+    const total = selectedFiles.length;
+    let completed = 0;
+    let successCount = 0;
+    let failureCount = 0;
+    setUploadProgress(0);
 
-    try {
-      if (localMode) {
-        setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
-        resetSelectedFile();
-        setNewName('');
-        setUploadProgress(100);
-        setUploadSuccess(`已加入素材庫：${assetName}`);
-        shouldKeepProgress = true;
-        scheduleUploadProgressReset();
-        return;
-      }
+    const initialItems = selectedFiles.map((file, index) => ({
+      id: getFileId(file, index),
+      name: file.name,
+      size: file.size,
+      type: file.type || 'unknown',
+      progress: 0,
+      status: 'pending',
+      message: '',
+    }));
+    setUploadItems(initialItems);
 
-      let assetUrl = '';
-      let assetSource = 'firebase-storage';
+    const advanceOverall = () => {
+      completed += 1;
+      setUploadProgress(Math.round((completed / total) * 100));
+    };
 
-      if (storage) {
-        try {
-          assetUrl = await runWithTimeout(
-            uploadAssetToStorage(storage, appId, selectedFile, setUploadProgress),
-            18000,
-            '檔案上傳逾時，請檢查網路後重試。'
-          );
-        } catch (error) {
-          console.warn('Firebase Storage upload failed:', error);
-          if (fileType !== 'image') throw error;
-          assetSource = 'firestore-inline';
-          setUploadProgress(35);
+    for (let index = 0; index < selectedFiles.length; index += 1) {
+      const selectedFile = selectedFiles[index];
+      const itemId = getFileId(selectedFile, index);
+      const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
+      const assetName = total === 1 && newName ? newName : selectedFile.name;
+
+      try {
+        patchUploadItem(itemId, { status: 'uploading', progress: 4, message: '準備上傳...' });
+
+        if (localMode) {
+          setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
+          patchUploadItem(itemId, { status: 'done', progress: 100, message: '已加入素材庫' });
+          successCount += 1;
+          advanceOverall();
+          continue;
         }
-      } else if (fileType !== 'image') {
-        throw new Error('Firebase Storage 尚未啟用，影片無法直接上傳。請改用「貼上網址」。');
-      }
 
-      if (!assetUrl) {
-        setUploadProgress(55);
-        assetUrl = await runWithTimeout(
-          compressImageForFirestore(selectedFile),
+        let assetUrl = '';
+        let assetSource = 'firebase-storage';
+
+        if (storage) {
+          try {
+            assetUrl = await runWithTimeout(
+              uploadAssetToStorage(storage, appId, selectedFile, (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: '上傳中...' })),
+              18000,
+              '檔案上傳逾時，請檢查網路後重試。'
+            );
+          } catch (error) {
+            console.warn('Firebase Storage upload failed:', error);
+            if (fileType !== 'image') throw error;
+            assetSource = 'firestore-inline';
+            patchUploadItem(itemId, { progress: 35, message: '改用圖片壓縮同步...' });
+          }
+        } else if (fileType !== 'image') {
+          throw new Error('Firebase Storage 尚未啟用，影片無法直接上傳。請改用「貼上網址」。');
+        }
+
+        if (!assetUrl) {
+          patchUploadItem(itemId, { progress: 55, message: '壓縮圖片中...' });
+          assetUrl = await runWithTimeout(
+            compressImageForFirestore(selectedFile),
+            12000,
+            '圖片處理逾時，請換一張較小圖片再試。'
+          );
+          patchUploadItem(itemId, { progress: 86, message: '寫入雲端中...' });
+        }
+
+        await runWithTimeout(
+          addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
+            name: assetName,
+            url: assetUrl,
+            type: fileType,
+            source: assetSource,
+            originalName: selectedFile.name,
+            originalSize: selectedFile.size,
+            createdAt: Date.now()
+          }),
           12000,
-          '圖片處理逾時，請換一張較小圖片再試。'
+          '素材寫入逾時，請稍後再試。'
         );
-        setUploadProgress(86);
-      }
 
-      await runWithTimeout(
-        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), {
-          name: assetName,
-          url: assetUrl,
-          type: fileType,
-          source: assetSource,
-          originalName: selectedFile.name,
-          originalSize: selectedFile.size,
-          createdAt: Date.now()
-        }),
-        12000,
-        '素材寫入逾時，請稍後再試。'
-      );
-      setUploadProgress(100);
-      resetSelectedFile();
-      setNewName('');
-      setUploadSuccess(`已加入素材庫：${assetName}`);
-      shouldKeepProgress = true;
-      scheduleUploadProgressReset();
-    } catch (error) {
-      console.error(error);
-      setUploadError(getUploadErrorMessage(error, fileType));
-    } finally {
-      setAdding(false);
-      if (!shouldKeepProgress) {
-        setUploadProgress(null);
+        patchUploadItem(itemId, { status: 'done', progress: 100, message: '完成' });
+        successCount += 1;
+      } catch (error) {
+        console.error(error);
+        patchUploadItem(itemId, { status: 'error', message: getUploadErrorMessage(error, fileType), progress: 100 });
+        failureCount += 1;
+      } finally {
+        advanceOverall();
       }
+    }
+
+    setAdding(false);
+    if (total === 1) setNewName('');
+    if (failureCount === 0) {
+      setUploadSuccess(`已上傳 ${successCount} 個檔案。`);
+      resetSelectedFiles();
+      scheduleUploadProgressReset();
+    } else if (successCount > 0) {
+      setUploadSuccess(`完成 ${successCount} 個，失敗 ${failureCount} 個。`);
+      setUploadError('部分檔案未上傳成功，請查看下方錯誤訊息。');
+      scheduleUploadProgressReset();
+    } else {
+      setUploadError('全部檔案都上傳失敗，請檢查格式或雲端設定。');
     }
   };
 
@@ -1724,25 +1764,80 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           {activeTab === 'upload' ? (
             <div className="space-y-2">
               <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
-                <input ref={fileInputRef} type="file" accept="video/mp4, image/jpeg, image/png, image/webp" onChange={e => { setSelectedFile(e.target.files[0] || null); setUploadError(''); setUploadSuccess(''); clearUploadProgressTimer(); setUploadProgress(null); }} className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors" />
-                <input type="text" placeholder="自訂名稱" value={newName} onChange={e => setNewName(e.target.value)} className="flex-1 px-3 py-2 rounded-xl outline-none text-sm font-medium border border-transparent focus:border-blue-100 transition-colors text-slate-800" />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="video/mp4,video/quicktime,.mov,image/jpeg,image/png,image/webp"
+                  onChange={e => {
+                    const files = Array.from(e.target.files || []);
+                    setSelectedFiles(files);
+                    setUploadItems(files.map((file, index) => ({
+                      id: getFileId(file, index),
+                      name: file.name,
+                      size: file.size,
+                      type: file.type || 'unknown',
+                      progress: 0,
+                      status: 'pending',
+                      message: '',
+                    })));
+                    setUploadError('');
+                    setUploadSuccess('');
+                    clearUploadProgressTimer();
+                    setUploadProgress(null);
+                  }}
+                  className="block w-1/3 text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer transition-colors"
+                />
+                <input
+                  type="text"
+                  placeholder={selectedFiles.length > 1 ? "多檔上傳時會使用原始檔名" : "自訂名稱"}
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  disabled={selectedFiles.length > 1}
+                  className="flex-1 px-3 py-2 rounded-xl outline-none text-sm font-medium border border-transparent focus:border-blue-100 transition-colors text-slate-800 disabled:bg-slate-100 disabled:text-slate-400"
+                />
                 <div className="flex flex-col w-28">
-                  <button onClick={handleUploadFile} disabled={adding || !selectedFile} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 flex justify-center items-center gap-1 w-full hover:bg-blue-700 transition-colors"><UploadCloud size={16}/> {adding ? '處理中' : '上傳'}</button>
+                  <button onClick={handleUploadFile} disabled={adding || selectedFiles.length === 0} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 flex justify-center items-center gap-1 w-full hover:bg-blue-700 transition-colors"><UploadCloud size={16}/> {adding ? '處理中' : '上傳'}</button>
                   {uploadProgress !== null && <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden"><div className="bg-blue-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>}
                 </div>
               </div>
-              <div className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm ${selectedFile ? 'border-blue-200 bg-blue-50/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{selectedFile ? selectedFile.name : '尚未選擇檔案'}</div>
-                  <div className="text-xs mt-1">{selectedFile ? `${selectedFile.type || '未知格式'} · ${formatFileSize(selectedFile.size)}` : '選完檔案後，右側的「上傳」按鈕才會啟用。'}</div>
+              <div className={`rounded-2xl border px-4 py-3 text-sm ${selectedFiles.length ? 'border-blue-200 bg-blue-50/70 text-slate-700' : 'border-slate-200 bg-slate-50 text-slate-400'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="font-medium truncate">{selectedFiles.length ? `已選擇 ${selectedFiles.length} 個檔案` : '尚未選擇檔案'}</div>
+                  {selectedFiles.length > 0 && (
+                    <button onClick={() => { resetSelectedFiles(); setUploadError(''); setUploadSuccess(''); clearUploadProgressTimer(); setUploadProgress(null); }} className="ml-3 shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700">
+                      清除全部
+                    </button>
+                  )}
                 </div>
-                {selectedFile && (
-                  <button onClick={() => { resetSelectedFile(); setUploadError(''); setUploadSuccess(''); clearUploadProgressTimer(); setUploadProgress(null); }} className="ml-3 shrink-0 text-xs font-medium text-slate-500 hover:text-slate-700">
-                    清除
-                  </button>
-                )}
+                <div className="text-xs mt-1">
+                  {selectedFiles.length ? `總大小：${formatFileSize(selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0))}` : '選完檔案後，右側的「上傳」按鈕才會啟用。'}
+                </div>
               </div>
-              <p className="text-xs text-slate-500">圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
+              {uploadItems.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 space-y-2 max-h-52 overflow-y-auto">
+                  {uploadItems.map((item) => (
+                    <div key={item.id} className="rounded-xl border border-slate-100 bg-slate-50 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-slate-700 truncate">{item.name}</div>
+                          <div className="text-[11px] text-slate-400">{item.type || '未知格式'} · {formatFileSize(item.size)}</div>
+                        </div>
+                        <span className={`text-[11px] font-medium ${
+                          item.status === 'done' ? 'text-emerald-600' : item.status === 'error' ? 'text-red-500' : 'text-slate-500'
+                        }`}>
+                          {item.status === 'done' ? '完成' : item.status === 'error' ? '失敗' : item.status === 'uploading' ? '上傳中' : '待上傳'}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden">
+                        <div className={`h-full transition-all duration-300 ${item.status === 'error' ? 'bg-red-400' : 'bg-blue-500'}`} style={{ width: `${item.progress || 0}%` }} />
+                      </div>
+                      {item.message && <div className={`text-[11px] mt-1 ${item.status === 'error' ? 'text-red-500' : 'text-slate-500'}`}>{item.message}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
             </div>
