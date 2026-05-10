@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getFirestore, 
+  initializeFirestore, 
   doc, 
   setDoc, 
   onSnapshot,
@@ -66,7 +66,11 @@ const firebaseConfig = typeof window !== 'undefined' ? window.FIREBASE_CONFIG : 
 const hasFirebaseConfig = Boolean(firebaseConfig?.apiKey && firebaseConfig?.projectId && firebaseConfig?.appId);
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
 const auth = app ? getAuth(app) : null;
-const db = app ? getFirestore(app) : null;
+const db = app ? initializeFirestore(app, {
+  // Improve reliability on constrained/mobile networks (e.g. campus Wi-Fi, proxy, Safari).
+  experimentalAutoDetectLongPolling: true,
+  useFetchStreams: false,
+}) : null;
 const storage = app ? getStorage(app) : null;
 const appId = firebaseConfig?.projectId || DEFAULT_APP_ID;
 
