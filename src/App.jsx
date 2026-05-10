@@ -283,6 +283,9 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
   const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
   let settled = false;
   let idleTimer = null;
+  let lastBytesTransferred = 0;
+  let lastProgressAt = performance.now();
+  let smoothedSpeedBps = 0;
   const maxTimer = window.setTimeout(() => {
     if (settled) return;
     settled = true;
@@ -307,8 +310,26 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
     (snapshot) => {
       if (settled) return;
       armIdleTimer();
+      const now = performance.now();
+      const elapsedSeconds = Math.max(0.001, (now - lastProgressAt) / 1000);
+      const bytesDelta = Math.max(0, snapshot.bytesTransferred - lastBytesTransferred);
+      if (bytesDelta > 0 && elapsedSeconds >= 0.25) {
+        const instantSpeedBps = bytesDelta / elapsedSeconds;
+        smoothedSpeedBps = smoothedSpeedBps
+          ? (smoothedSpeedBps * 0.65) + (instantSpeedBps * 0.35)
+          : instantSpeedBps;
+        lastBytesTransferred = snapshot.bytesTransferred;
+        lastProgressAt = now;
+      }
       const progress = Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-      onProgress(progress);
+      const remainingBytes = Math.max(0, snapshot.totalBytes - snapshot.bytesTransferred);
+      onProgress({
+        progress,
+        bytesTransferred: snapshot.bytesTransferred,
+        totalBytes: snapshot.totalBytes,
+        speedBps: smoothedSpeedBps,
+        etaSeconds: smoothedSpeedBps > 0 ? remainingBytes / smoothedSpeedBps : null,
+      });
       if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
     },
     (error) => {
@@ -1714,6 +1735,23 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatUploadEta = (seconds) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '';
+    const safeSeconds = Math.ceil(seconds);
+    if (safeSeconds < 60) return `${safeSeconds} 秒`;
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainder = safeSeconds % 60;
+    return `${minutes}分${String(remainder).padStart(2, '0')}秒`;
+  };
+
+  const getUploadProgressMessage = (info) => {
+    const transferText = info.speedBps > 0 ? `${formatFileSize(info.speedBps)}/s` : '';
+    const etaText = Number.isFinite(info.etaSeconds) ? `剩餘 ${formatUploadEta(info.etaSeconds)}` : '';
+    const detail = [transferText, etaText].filter(Boolean).join(' · ');
+    if (info.progress >= 99) return detail ? `等待 Firebase 完成處理... ${detail}` : '等待 Firebase 完成處理...';
+    return detail ? `上傳中... ${detail}` : '上傳中...';
+  };
+
   const runWithTimeout = async (promise, ms, timeoutMessage) => {
     let timeoutId;
     try {
@@ -1822,7 +1860,12 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
               storage,
               appId,
               selectedFile,
-              (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: progress >= 99 ? '等待 Firebase 完成處理...' : '上傳中...' }),
+              (info) => patchUploadItem(itemId, {
+                progress: Math.max(8, Math.round(info.progress)),
+                speedBps: info.speedBps,
+                etaSeconds: info.etaSeconds,
+                message: getUploadProgressMessage(info),
+              }),
               (message) => patchUploadItem(itemId, { message })
             );
           } catch (error) {
@@ -1975,6 +2018,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                           {item.status === 'done' ? '完成' : item.status === 'error' ? '失敗' : item.status === 'uploading' ? '上傳中' : '待上傳'}
                         </span>
                       </div>
+                      {item.status === 'uploading' && item.speedBps > 0 && (
+                        <div className="mt-1 text-[11px] font-medium text-blue-600">
+                          {formatFileSize(item.speedBps)}/s{Number.isFinite(item.etaSeconds) ? ` · 剩餘 ${formatUploadEta(item.etaSeconds)}` : ''}
+                        </div>
+                      )}
                       <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden">
                         <div className={`h-full transition-all duration-300 ${item.status === 'error' ? 'bg-red-400' : 'bg-blue-500'}`} style={{ width: `${item.progress || 0}%` }} />
                       </div>
