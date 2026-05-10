@@ -1,0 +1,192 @@
+From 189abab74ee9e2be172d2aebafa525a23064c1ea Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 10 May 2026 22:21:13 +0800
+Subject: [PATCH] Fix video uploads
+
+---
+ src/App.jsx | 107 ++++++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 88 insertions(+), 19 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index dc5e351..349dce6 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -117,8 +117,8 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+ const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+ const INLINE_IMAGE_MAX_DIMENSION = 1600;
+ const ASSET_REF_PREFIX = 'asset://';
+-const MIN_UPLOAD_TIMEOUT_MS = 45000;
+-const MAX_UPLOAD_TIMEOUT_MS = 8 * 60 * 1000;
++const STORAGE_UPLOAD_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
++const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
+ const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+ const getApplyDelayMs = (applyAt) => {
+   const targetTs = Number(applyAt) || 0;
+@@ -134,11 +134,25 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+ 
+ const getStringBytes = (value) => new TextEncoder().encode(value).length;
+ const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
+-const getUploadTimeoutMs = (file) => {
+-  const sizeBytes = Number(file?.size) || 0;
+-  // Estimate by file size: roughly 4 seconds per MB, with sane floor/ceiling.
+-  const estimated = Math.round((sizeBytes / (1024 * 1024)) * 4000);
+-  return Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.min(MAX_UPLOAD_TIMEOUT_MS, estimated));
++const getFileExtension = (fileName = '') => fileName.split('.').pop()?.toLowerCase() || '';
++const inferFileContentType = (file = {}) => {
++  if (file.type) return file.type;
++  const ext = getFileExtension(file.name);
++  if (ext === 'mov') return 'video/quicktime';
++  if (ext === 'm4v') return 'video/x-m4v';
++  if (ext === 'mp4') return 'video/mp4';
++  if (ext === 'webm') return 'video/webm';
++  if (ext === 'ogv' || ext === 'ogg') return 'video/ogg';
++  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
++  if (ext === 'png') return 'image/png';
++  if (ext === 'webp') return 'image/webp';
++  return 'application/octet-stream';
++};
++const getAssetTypeFromFile = (file = {}) => {
++  const contentType = inferFileContentType(file);
++  if (contentType.startsWith('video/')) return 'video';
++  if (contentType.startsWith('image/')) return 'image';
++  return '';
+ };
+ const toAssetRef = (id) => `${ASSET_REF_PREFIX}${id}`;
+ const parseAssetRef = (value = '') => {
+@@ -263,18 +277,56 @@ const compressImageForFirestore = async (file) => {
+   return dataUrl;
+ };
+ 
+-const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((resolve, reject) => {
++const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
+   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
+-  const uploadTask = uploadBytesResumable(fileRef, file);
++  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
++  let settled = false;
++  let idleTimer = null;
++  const maxTimer = window.setTimeout(() => {
++    if (settled) return;
++    settled = true;
++    uploadTask.cancel();
++    reject(new Error('storage-upload-max-timeout'));
++  }, STORAGE_UPLOAD_MAX_TIMEOUT_MS);
++  const cleanup = () => {
++    window.clearTimeout(maxTimer);
++    if (idleTimer) window.clearTimeout(idleTimer);
++  };
++  const armIdleTimer = () => {
++    if (idleTimer) window.clearTimeout(idleTimer);
++    idleTimer = window.setTimeout(() => {
++      if (settled) return;
++      settled = true;
++      uploadTask.cancel();
++      reject(new Error('storage-upload-stalled'));
++    }, STORAGE_UPLOAD_IDLE_TIMEOUT_MS);
++  };
++  armIdleTimer();
+   uploadTask.on('state_changed',
+-    (snapshot) => onProgress(Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+-    reject,
++    (snapshot) => {
++      if (settled) return;
++      armIdleTimer();
++      const progress = Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100);
++      onProgress(progress);
++      if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
++    },
++    (error) => {
++      if (settled) return;
++      settled = true;
++      cleanup();
++      reject(error);
++    },
+     async () => {
+       try {
++        if (settled) return;
++        onStatus?.('取得影片網址...');
+         resolve(await getDownloadURL(uploadTask.snapshot.ref));
+       } catch (error) {
+         reject(error);
++      } finally {
++        settled = true;
++        cleanup();
+       }
+     }
+   );
+@@ -282,6 +334,18 @@ const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((
+ 
+ const getUploadErrorMessage = (error, fileType) => {
+   const message = error?.message || '';
++  if (message.includes('storage-upload-stalled')) {
++    return '上傳連線停住超過 3 分鐘，請確認網路穩定後再試一次。';
++  }
++  if (message.includes('storage-upload-max-timeout')) {
++    return '影片上傳時間超過 30 分鐘，請壓縮影片或改用「貼上網址」。';
++  }
++  if (error?.code === 'storage/retry-limit-exceeded') {
++    return 'Firebase Storage 連線重試太多次，請確認網路或稍後再試。';
++  }
++  if (error?.code === 'storage/canceled') {
++    return '影片上傳已中斷，請重新選取後再試一次。';
++  }
+   if (message.includes('Not Found') || error?.code === 'storage/bucket-not-found') {
+     return fileType === 'image'
+       ? 'Firebase Storage 尚未啟用，已改用圖片壓縮同步。'
+@@ -1731,13 +1795,16 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+     for (let index = 0; index < selectedFiles.length; index += 1) {
+       const selectedFile = selectedFiles[index];
+       const itemId = getFileId(selectedFile, index);
+-      const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
++      const fileType = getAssetTypeFromFile(selectedFile);
+       const assetName = total === 1 && newName ? newName : selectedFile.name;
+-      const uploadTimeoutMs = getUploadTimeoutMs(selectedFile);
+ 
+       try {
+         patchUploadItem(itemId, { status: 'uploading', progress: 4, message: '準備上傳...' });
+ 
++        if (!fileType) {
++          throw new Error('不支援的檔案格式。請上傳圖片、MP4、MOV、M4V、WebM 或 OGG。');
++        }
++
+         if (localMode) {
+           setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
+           patchUploadItem(itemId, { status: 'done', progress: 100, message: '已加入素材庫' });
+@@ -1751,10 +1818,12 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+ 
+         if (storage) {
+           try {
+-            assetUrl = await runWithTimeout(
+-              uploadAssetToStorage(storage, appId, selectedFile, (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: '上傳中...' })),
+-              uploadTimeoutMs,
+-              '檔案上傳逾時，請檢查網路後重試。'
++            assetUrl = await uploadAssetToStorage(
++              storage,
++              appId,
++              selectedFile,
++              (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: progress >= 99 ? '等待 Firebase 完成處理...' : '上傳中...' }),
++              (message) => patchUploadItem(itemId, { message })
+             );
+           } catch (error) {
+             console.warn('Firebase Storage upload failed:', error);
+@@ -1845,7 +1914,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+                   ref={fileInputRef}
+                   type="file"
+                   multiple
+-                  accept="video/mp4,video/quicktime,.mov,image/jpeg,image/png,image/webp"
++                  accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/ogg,.mov,.m4v,.mp4,.webm,.ogv,.ogg,image/jpeg,image/png,image/webp"
+                   onChange={e => {
+                     const files = Array.from(e.target.files || []);
+                     setSelectedFiles(files);
+@@ -1914,7 +1983,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+                   ))}
+                 </div>
+               )}
+-              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
++              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片支援 MP4、MOV、M4V、WebM、OGG，會透過 Firebase Storage 上傳。</p>
+               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
+               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
+             </div>
+-- 
+2.50.1 (Apple Git-155)
+

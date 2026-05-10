@@ -3,9 +3,11 @@ import { initializeApp } from 'firebase/app';
 import { 
   initializeFirestore, 
   doc, 
+  getDoc,
   setDoc, 
   onSnapshot,
   collection,
+  getDocs,
   deleteDoc,
   addDoc
 } from 'firebase/firestore';
@@ -105,6 +107,7 @@ const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+const FIRESTORE_POLL_INTERVAL_MS = 2500;
 const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 280;
 const MAX_SYNC_WAIT_MS = 1200;
@@ -114,6 +117,8 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const ASSET_REF_PREFIX = 'asset://';
+const STORAGE_UPLOAD_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
 const getApplyDelayMs = (applyAt) => {
   const targetTs = Number(applyAt) || 0;
@@ -129,6 +134,26 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
+const getFileExtension = (fileName = '') => fileName.split('.').pop()?.toLowerCase() || '';
+const inferFileContentType = (file = {}) => {
+  if (file.type) return file.type;
+  const ext = getFileExtension(file.name);
+  if (ext === 'mov') return 'video/quicktime';
+  if (ext === 'm4v') return 'video/x-m4v';
+  if (ext === 'mp4') return 'video/mp4';
+  if (ext === 'webm') return 'video/webm';
+  if (ext === 'ogv' || ext === 'ogg') return 'video/ogg';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return 'application/octet-stream';
+};
+const getAssetTypeFromFile = (file = {}) => {
+  const contentType = inferFileContentType(file);
+  if (contentType.startsWith('video/')) return 'video';
+  if (contentType.startsWith('image/')) return 'image';
+  return '';
+};
 const toAssetRef = (id) => `${ASSET_REF_PREFIX}${id}`;
 const parseAssetRef = (value = '') => {
   if (typeof value !== 'string' || !value.startsWith(ASSET_REF_PREFIX)) return null;
@@ -252,18 +277,56 @@ const compressImageForFirestore = async (file) => {
   return dataUrl;
 };
 
-const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((resolve, reject) => {
+const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
-  const uploadTask = uploadBytesResumable(fileRef, file);
+  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
+  let settled = false;
+  let idleTimer = null;
+  const maxTimer = window.setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    uploadTask.cancel();
+    reject(new Error('storage-upload-max-timeout'));
+  }, STORAGE_UPLOAD_MAX_TIMEOUT_MS);
+  const cleanup = () => {
+    window.clearTimeout(maxTimer);
+    if (idleTimer) window.clearTimeout(idleTimer);
+  };
+  const armIdleTimer = () => {
+    if (idleTimer) window.clearTimeout(idleTimer);
+    idleTimer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      uploadTask.cancel();
+      reject(new Error('storage-upload-stalled'));
+    }, STORAGE_UPLOAD_IDLE_TIMEOUT_MS);
+  };
+  armIdleTimer();
   uploadTask.on('state_changed',
-    (snapshot) => onProgress(Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
-    reject,
+    (snapshot) => {
+      if (settled) return;
+      armIdleTimer();
+      const progress = Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+      onProgress(progress);
+      if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
+    },
+    (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    },
     async () => {
       try {
+        if (settled) return;
+        onStatus?.('取得影片網址...');
         resolve(await getDownloadURL(uploadTask.snapshot.ref));
       } catch (error) {
         reject(error);
+      } finally {
+        settled = true;
+        cleanup();
       }
     }
   );
@@ -271,6 +334,18 @@ const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((
 
 const getUploadErrorMessage = (error, fileType) => {
   const message = error?.message || '';
+  if (message.includes('storage-upload-stalled')) {
+    return '上傳連線停住超過 3 分鐘，請確認網路穩定後再試一次。';
+  }
+  if (message.includes('storage-upload-max-timeout')) {
+    return '影片上傳時間超過 30 分鐘，請壓縮影片或改用「貼上網址」。';
+  }
+  if (error?.code === 'storage/retry-limit-exceeded') {
+    return 'Firebase Storage 連線重試太多次，請確認網路或稍後再試。';
+  }
+  if (error?.code === 'storage/canceled') {
+    return '影片上傳已中斷，請重新選取後再試一次。';
+  }
   if (message.includes('Not Found') || error?.code === 'storage/bucket-not-found') {
     return fileType === 'image'
       ? 'Firebase Storage 尚未啟用，已改用圖片壓縮同步。'
@@ -313,6 +388,14 @@ const DEFAULT_STATE = {
   bulletChats: { active: false, messages: [], applyAt: 0 },
   stats: { chatCount: 0, likes: 0 }
 };
+
+const normalizeGlobalState = (data = {}) => ({
+  ...DEFAULT_STATE,
+  ...data,
+  timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
+  bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
+  stats: data.stats || { chatCount: 0, likes: 0 },
+});
 
 const inferAssetType = (url = '') => {
   const cleanUrl = url.split('?')[0].toLowerCase();
@@ -708,25 +791,15 @@ export default function App() {
     // 路徑: artifacts -> appId -> public -> data -> appConfig -> globalState
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
     let dataSettled = false;
-    const dataWarnTimeout = setTimeout(() => {
-      if (dataSettled) return;
-      console.warn("Firestore first snapshot is delayed; keep waiting for cloud sync.");
-      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', data: 'timeout-waiting', reason: 'Firestore delayed, still retrying...' }));
-      setLoading(false);
-    }, FIRESTORE_WARN_TIMEOUT_MS);
-    
-    const unsubState = onSnapshot(stateDoc, (docSnap) => {
+    let cancelled = false;
+    let dataWarnTimeout = null;
+
+    const applyStateSnap = (docSnap, source = 'realtime') => {
+      if (cancelled) return;
       dataSettled = true;
       clearTimeout(dataWarnTimeout);
       if (docSnap.exists()) {
-        const data = docSnap.data();
-        const nextState = {
-          ...DEFAULT_STATE,
-          ...data,
-          timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
-          bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
-          stats: data.stats || { chatCount: 0, likes: 0 }
-        };
+        const nextState = normalizeGlobalState(docSnap.data());
         globalStateRef.current = nextState;
         setGlobalState(nextState);
       } else {
@@ -736,8 +809,16 @@ export default function App() {
       }
       setLoading(false);
       setIsDbMissing(false);
-      setSyncInfo(prev => ({ ...prev, mode: 'cloud', data: 'connected', reason: '' }));
-    }, (err) => {
+      setSyncInfo(prev => ({
+        ...prev,
+        mode: 'cloud',
+        data: source === 'polling' ? 'polling-backup' : 'connected',
+        reason: '',
+      }));
+    };
+
+    const handleFirestoreError = (err) => {
+      if (cancelled) return;
       dataSettled = true;
       clearTimeout(dataWarnTimeout);
       console.error("Firestore error:", err);
@@ -750,16 +831,54 @@ export default function App() {
       }
       setSyncInfo(prev => ({ ...prev, mode: 'error', data: err.code || 'error', reason: err.message }));
       setLoading(false);
-    });
+    };
+
+    const fetchStateOnce = async (source = 'polling') => {
+      try {
+        const docSnap = await getDoc(stateDoc);
+        applyStateSnap(docSnap, source);
+      } catch (err) {
+        handleFirestoreError(err);
+      }
+    };
+
+    dataWarnTimeout = setTimeout(() => {
+      if (dataSettled) return;
+      console.warn("Firestore first snapshot is delayed; using one-shot read fallback.");
+      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', data: 'timeout-waiting', reason: 'Firestore delayed, still retrying...' }));
+      setLoading(false);
+      fetchStateOnce('polling');
+    }, FIRESTORE_WARN_TIMEOUT_MS);
+    
+    const unsubState = onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError);
 
     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
-    const unsubAssets = onSnapshot(assetsCol, (snap) => {
+    const applyAssetsSnap = (snap) => {
+      if (cancelled) return;
       const list = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() }));
       setAssets(list);
-    }, (err) => console.log("Assets listener error:", err));
+    };
+    const fetchAssetsOnce = async () => {
+      try {
+        applyAssetsSnap(await getDocs(assetsCol));
+      } catch (err) {
+        console.log("Assets polling error:", err);
+      }
+    };
+    const unsubAssets = onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err));
+    const pollTimer = setInterval(() => {
+      fetchStateOnce('polling');
+      fetchAssetsOnce();
+    }, FIRESTORE_POLL_INTERVAL_MS);
 
-    return () => { clearTimeout(dataWarnTimeout); unsubState(); unsubAssets(); };
+    return () => {
+      cancelled = true;
+      clearTimeout(dataWarnTimeout);
+      clearInterval(pollTimer);
+      unsubState();
+      unsubAssets();
+    };
   }, [user, localMode]);
 
   useEffect(() => {
@@ -767,17 +886,34 @@ export default function App() {
 
     if (!localMode && db) {
       const statusCol = collection(db, 'artifacts', appId, 'public', 'data', 'displayStatus');
-      return onSnapshot(statusCol, (snap) => {
+      let cancelled = false;
+      const applyStatusSnap = (snap) => {
+        if (cancelled) return;
         const nextStatuses = {};
         snap.forEach(d => {
           nextStatuses[d.id] = { id: d.id, ...d.data() };
         });
         setDisplayStatuses(nextStatuses);
         setSyncInfo(prev => ({ ...prev, displayStatus: 'connected' }));
-      }, (err) => {
+      };
+      const fetchStatusOnce = async () => {
+        try {
+          applyStatusSnap(await getDocs(statusCol));
+        } catch (err) {
+          console.log("Display status polling error:", err);
+        }
+      };
+      const unsubStatus = onSnapshot(statusCol, applyStatusSnap, (err) => {
         console.log("Display status listener error:", err);
         setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
       });
+      const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
+      fetchStatusOnce();
+      return () => {
+        cancelled = true;
+        clearInterval(statusPollTimer);
+        unsubStatus();
+      };
     }
 
     const readLocalStatuses = () => {
@@ -1659,11 +1795,15 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     for (let index = 0; index < selectedFiles.length; index += 1) {
       const selectedFile = selectedFiles[index];
       const itemId = getFileId(selectedFile, index);
-      const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
+      const fileType = getAssetTypeFromFile(selectedFile);
       const assetName = total === 1 && newName ? newName : selectedFile.name;
 
       try {
         patchUploadItem(itemId, { status: 'uploading', progress: 4, message: '準備上傳...' });
+
+        if (!fileType) {
+          throw new Error('不支援的檔案格式。請上傳圖片、MP4、MOV、M4V、WebM 或 OGG。');
+        }
 
         if (localMode) {
           setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
@@ -1678,10 +1818,12 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
 
         if (storage) {
           try {
-            assetUrl = await runWithTimeout(
-              uploadAssetToStorage(storage, appId, selectedFile, (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: '上傳中...' })),
-              18000,
-              '檔案上傳逾時，請檢查網路後重試。'
+            assetUrl = await uploadAssetToStorage(
+              storage,
+              appId,
+              selectedFile,
+              (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: progress >= 99 ? '等待 Firebase 完成處理...' : '上傳中...' }),
+              (message) => patchUploadItem(itemId, { message })
             );
           } catch (error) {
             console.warn('Firebase Storage upload failed:', error);
@@ -1772,7 +1914,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="video/mp4,video/quicktime,.mov,image/jpeg,image/png,image/webp"
+                  accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/ogg,.mov,.m4v,.mp4,.webm,.ogv,.ogg,image/jpeg,image/png,image/webp"
                   onChange={e => {
                     const files = Array.from(e.target.files || []);
                     setSelectedFiles(files);
@@ -1841,7 +1983,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
+              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片支援 MP4、MOV、M4V、WebM、OGG，會透過 Firebase Storage 上傳。</p>
               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
             </div>
