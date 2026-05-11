@@ -1,7 +1,7 @@
 From e054431be6c9d062ea766a4f37e3617f9ef137f6 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:44:13 +0800
-Subject: [PATCH 1/4] Add playback command channel
+Subject: [PATCH 1/5] Add playback command channel
 
 ---
  src/App.jsx | 99 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -175,7 +175,7 @@ index 4fda860..d95400c 100644
 From c1f965580c86c76a2c8bdf6b88b823edbed9202b Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:53:33 +0800
-Subject: [PATCH 2/4] Stabilize display connection heartbeat
+Subject: [PATCH 2/5] Stabilize display connection heartbeat
 
 ---
  src/App.jsx | 59 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -294,7 +294,7 @@ index d95400c..53ceb77 100644
 From b2371eecffb9d34cac1425f10550c4a150c01eb0 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:36:09 +0800
-Subject: [PATCH 3/4] Improve multi-display playback timing
+Subject: [PATCH 3/5] Improve multi-display playback timing
 
 ---
  src/App.jsx | 37 +++++++++++++++++++++++++++++++++++--
@@ -386,7 +386,7 @@ index 53ceb77..164fea3 100644
 From 98b35cbb3995e568b1e7deb9dd5fa9dec843046e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:53:41 +0800
-Subject: [PATCH 4/4] Speed up asset uploads
+Subject: [PATCH 4/5] Speed up asset uploads
 
 ---
  src/App.jsx | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
@@ -569,6 +569,73 @@ index 164fea3..dc24519 100644
                {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
                {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
              </div>
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 183589f290d8b400ef2ed4183415b7ff0e85d641 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 14:10:09 +0800
+Subject: [PATCH 5/5] Treat Firestore internal assertion as transient
+
+---
+ src/App.jsx | 22 +++++++++++++++++++---
+ 1 file changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index dc24519..3759bd7 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -140,7 +140,14 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+ };
+ const isFirestoreOfflineError = (error = {}) => {
+   const message = String(error?.message || '').toLowerCase();
+-  return error?.code === 'unavailable' || message.includes('client is offline') || message.includes('offline');
++  return error?.code === 'unavailable'
++    || error?.code === 'internal'
++    || message.includes('client is offline')
++    || message.includes('offline')
++    || message.includes('internal assertion failed')
++    || message.includes('unexpected state')
++    || message.includes('webchannel')
++    || message.includes('transport errored');
+ };
+ const toMillis = (value) => {
+   if (!value) return 0;
+@@ -1048,11 +1055,13 @@ export default function App() {
+       if (cancelled) return;
+       if (isFirestoreOfflineError(err)) {
+         console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
++        clearTimeout(dataWarnTimeout);
++        setErrorMsg(null);
+         setSyncInfo(prev => ({
+           ...prev,
+           mode: 'cloud-pending',
+-          data: 'retrying-offline',
+-          reason: 'Firestore temporarily offline, still retrying...',
++          data: 'retrying-transient',
++          reason: 'Firestore transient error, still retrying...',
+         }));
+         setLoading(false);
+         return;
+@@ -1140,10 +1149,17 @@ export default function App() {
+           applyStatusSnap(await getDocs(statusCol));
+         } catch (err) {
+           console.log("Display status polling error:", err);
++          if (isFirestoreOfflineError(err)) {
++            setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
++          }
+         }
+       };
+       const unsubStatus = onSnapshot(statusCol, applyStatusSnap, (err) => {
+         console.log("Display status listener error:", err);
++        if (isFirestoreOfflineError(err)) {
++          setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
++          return;
++        }
+         setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
+       });
+       const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
 -- 
 2.50.1 (Apple Git-155)
 

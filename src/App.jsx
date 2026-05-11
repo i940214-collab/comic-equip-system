@@ -140,7 +140,14 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
 };
 const isFirestoreOfflineError = (error = {}) => {
   const message = String(error?.message || '').toLowerCase();
-  return error?.code === 'unavailable' || message.includes('client is offline') || message.includes('offline');
+  return error?.code === 'unavailable'
+    || error?.code === 'internal'
+    || message.includes('client is offline')
+    || message.includes('offline')
+    || message.includes('internal assertion failed')
+    || message.includes('unexpected state')
+    || message.includes('webchannel')
+    || message.includes('transport errored');
 };
 const toMillis = (value) => {
   if (!value) return 0;
@@ -1048,11 +1055,13 @@ export default function App() {
       if (cancelled) return;
       if (isFirestoreOfflineError(err)) {
         console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
+        clearTimeout(dataWarnTimeout);
+        setErrorMsg(null);
         setSyncInfo(prev => ({
           ...prev,
           mode: 'cloud-pending',
-          data: 'retrying-offline',
-          reason: 'Firestore temporarily offline, still retrying...',
+          data: 'retrying-transient',
+          reason: 'Firestore transient error, still retrying...',
         }));
         setLoading(false);
         return;
@@ -1140,10 +1149,17 @@ export default function App() {
           applyStatusSnap(await getDocs(statusCol));
         } catch (err) {
           console.log("Display status polling error:", err);
+          if (isFirestoreOfflineError(err)) {
+            setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
+          }
         }
       };
       const unsubStatus = onSnapshot(statusCol, applyStatusSnap, (err) => {
         console.log("Display status listener error:", err);
+        if (isFirestoreOfflineError(err)) {
+          setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
+          return;
+        }
         setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
       });
       const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
