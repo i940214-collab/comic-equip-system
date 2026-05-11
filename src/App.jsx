@@ -114,6 +114,7 @@ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
 const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
+const LOCAL_WRITE_PROTECT_MS = 8000;
 const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 800;
 const MAX_SYNC_WAIT_MS = 1200;
@@ -158,6 +159,9 @@ const getCloudSyncState = (syncInfo = {}) => {
   if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
   return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
 };
+const getTimelineSignature = (timeline = []) => timeline
+  .map((scene) => `${scene?.id || ''}:${scene?.name || ''}:${scene?.duration || ''}`)
+  .join('|');
 const toMillis = (value) => {
   if (!value) return 0;
   if (typeof value === 'number') return value;
@@ -993,6 +997,7 @@ export default function App() {
   const pendingCloudUpdatesRef = useRef(null);
   const cloudFlushTimerRef = useRef(null);
   const cloudWriteChainRef = useRef(Promise.resolve());
+  const localWriteGuardRef = useRef({ until: 0, state: null });
   const assetIdByUrlRef = useRef({});
 
   useEffect(() => {
@@ -1053,6 +1058,38 @@ export default function App() {
       .catch(() => null)
       .then(writeStateWithBackup);
     return cloudWriteChainRef.current;
+  };
+
+  const keepRecentLocalStateIfNewer = (incomingState, source = 'realtime') => {
+    const guard = localWriteGuardRef.current;
+    if (!guard?.state || Date.now() > guard.until) return false;
+
+    const localState = guard.state;
+    const localUpdatedAt = Number(localState.updatedAt) || 0;
+    const incomingUpdatedAt = Number(incomingState.updatedAt) || 0;
+    if (localUpdatedAt && incomingUpdatedAt && incomingUpdatedAt >= localUpdatedAt) return false;
+
+    const localTimeline = Array.isArray(localState.timeline) ? localState.timeline : [];
+    const incomingTimeline = Array.isArray(incomingState.timeline) ? incomingState.timeline : [];
+    const timelineLooksOlder = localTimeline.length > incomingTimeline.length
+      || (localTimeline.length === incomingTimeline.length
+        && getTimelineSignature(localTimeline) !== getTimelineSignature(incomingTimeline));
+    const stateLooksOlder = localUpdatedAt && (!incomingUpdatedAt || incomingUpdatedAt < localUpdatedAt);
+
+    if (!timelineLooksOlder && !stateLooksOlder) return false;
+
+    globalStateRef.current = localState;
+    setGlobalState(localState);
+    setLoading(false);
+    setIsDbMissing(false);
+    setSyncInfo(prev => ({
+      ...prev,
+      mode: 'cloud',
+      data: source === 'rest' ? 'rest-backup' : source === 'polling' ? 'polling-backup' : 'connected',
+      reason: '',
+    }));
+    enqueueCloudWrite({ ...localState, updatedAt: localUpdatedAt || Date.now() }, true);
+    return true;
   };
 
   const flushPendingCloudUpdates = () => {
@@ -1207,6 +1244,7 @@ export default function App() {
       clearTimeout(dataWarnTimeout);
       if (data) {
         const nextState = normalizeGlobalState(data);
+        if (keepRecentLocalStateIfNewer(nextState, source)) return;
         globalStateRef.current = nextState;
         setGlobalState(nextState);
       } else {
@@ -1431,6 +1469,10 @@ export default function App() {
       : updatesOrFactory;
     if (!updates || typeof updates !== 'object') return;
     let nextState = { ...baseState, ...updates };
+    const writeTimestamp = Date.now();
+    if (!skipCloud) {
+      nextState = { ...nextState, updatedAt: writeTimestamp };
+    }
     let timelineWasRewritten = false;
     if (Array.isArray(nextState.timeline)) {
       const rewrittenTimeline = rewriteTimelineAssetRefs(nextState.timeline, assetIdByUrlRef.current);
@@ -1440,13 +1482,14 @@ export default function App() {
       }
     }
     const cloudUpdates = timelineWasRewritten
-      ? { ...updates, timeline: nextState.timeline }
-      : updates;
+      ? { ...updates, timeline: nextState.timeline, updatedAt: nextState.updatedAt }
+      : { ...updates, updatedAt: nextState.updatedAt };
     globalStateRef.current = nextState;
     setGlobalState(nextState);
     if (skipCloud) {
       return;
     }
+    localWriteGuardRef.current = { until: writeTimestamp + LOCAL_WRITE_PROTECT_MS, state: nextState };
     if (localMode) {
       return;
     }
