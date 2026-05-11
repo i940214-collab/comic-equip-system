@@ -2649,7 +2649,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 font-sans">
-      <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] min-h-0 animate-in zoom-in-95 duration-200">
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <h2 className="font-semibold text-lg flex items-center gap-2 text-slate-800"><Library className="text-blue-500"/> 素材庫</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 bg-white p-1.5 rounded-full border shadow-sm transition-colors"><X size={18}/></button>
@@ -2753,7 +2753,10 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto p-6 bg-white">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 bg-white"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {assets.length === 0 ? (
             <div className="text-center py-12 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">素材庫是空的。</div>
           ) : (
