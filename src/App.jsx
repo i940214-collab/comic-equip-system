@@ -124,6 +124,7 @@ const MAX_REMOTE_PLAYBACK_DRIFT_MS = 30 * 60 * 1000;
 const CLOUD_WRITE_DEBOUNCE_MS = 140;
 const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
 const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+const USE_FIRESTORE_REALTIME = false;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const ASSET_REF_PREFIX = 'asset://';
@@ -151,9 +152,11 @@ const isFirestoreOfflineError = (error = {}) => {
     || message.includes('offline')
     || message.includes('internal assertion failed')
     || message.includes('unexpected state')
+    || message.includes('target id already exists')
     || message.includes('webchannel')
     || message.includes('transport errored');
 };
+const isFirestoreTransientError = (error = {}) => isFirestoreOfflineError(error);
 const isCloudDataUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
 const isCloudDisplayUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
 const isCloudDataRecovering = (status) => ['pending', 'timeout-waiting', 'retrying-transient'].includes(status);
@@ -1390,7 +1393,9 @@ export default function App() {
       fetchStateOnce('polling');
     }, FIRESTORE_WARN_TIMEOUT_MS);
     
-    const unsubState = onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError);
+    const unsubState = USE_FIRESTORE_REALTIME
+      ? onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError)
+      : () => {};
     fetchStateOnce('polling');
 
     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
@@ -1433,7 +1438,9 @@ export default function App() {
         }
       }
     };
-    const unsubAssets = onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err));
+    const unsubAssets = USE_FIRESTORE_REALTIME
+      ? onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err))
+      : () => {};
     fetchAssetsOnce();
     const pollTimer = setInterval(() => {
       fetchStateOnce('polling');
@@ -1512,14 +1519,16 @@ export default function App() {
           }
         }
       };
-      const unsubStatus = onSnapshot(statusCol, applyStatusSnap, (err) => {
-        console.log("Display status listener error:", err);
-        if (isFirestoreOfflineError(err)) {
-          setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
-          return;
-        }
-        setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
-      });
+      const unsubStatus = USE_FIRESTORE_REALTIME
+        ? onSnapshot(statusCol, applyStatusSnap, (err) => {
+          console.log("Display status listener error:", err);
+          if (isFirestoreOfflineError(err)) {
+            setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
+            return;
+          }
+          setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
+        })
+        : () => {};
       const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
       fetchStatusOnce();
       return () => {
@@ -1845,6 +1854,10 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
         }).catch(restError => console.warn("Playback command REST fallback failed:", restError));
       }
     });
+    setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/playback`, {
+      ...commandPayload,
+      issuedAtServer: issuedAt,
+    }).catch(restError => console.warn("Playback command REST mirror failed:", restError));
   };
 
   const togglePlay = () => {
@@ -1906,6 +1919,12 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
       value,
       updatedAt: nowTs,
     }, { merge: true }).catch(error => console.warn("Live bezel sync failed:", error));
+    setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/bezelGap`, {
+      type: 'bezel-gap',
+      sceneId,
+      value,
+      updatedAt: nowTs,
+    }).catch(restError => console.warn("Live bezel REST mirror failed:", restError));
   };
 
   const handleBezelGapInput = (sceneId, nextValue) => {
@@ -2971,9 +2990,11 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
         }
       }
     };
-    const unsubPlaybackCommand = onSnapshot(playbackCommandDoc, applyDoc, (error) => {
-      console.warn("Playback command listener error:", error);
-    });
+    const unsubPlaybackCommand = USE_FIRESTORE_REALTIME
+      ? onSnapshot(playbackCommandDoc, applyDoc, (error) => {
+        console.warn("Playback command listener error:", error);
+      })
+      : () => {};
     fetchPlaybackCommand();
     const playbackPollTimer = setInterval(fetchPlaybackCommand, PLAYBACK_COMMAND_POLL_MS);
     return () => {
@@ -3044,7 +3065,21 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       return;
     }
     const liveBezelDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'bezelGap');
-    return onSnapshot(liveBezelDoc, (snap) => {
+    let cancelled = false;
+    const applyLiveBezel = (latest) => {
+      if (cancelled || !latest || latest.type !== 'bezel-gap') return;
+      setLiveBezelOverride({
+        sceneId: latest.sceneId || '',
+        value: clampBezelGap(latest.value),
+        createdAt: Number(latest.updatedAt) || Date.now(),
+      });
+    };
+    const fetchLiveBezelOnce = () => {
+      getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/bezelGap`)
+        .then(applyLiveBezel)
+        .catch(error => console.warn("Live bezel REST polling failed:", error));
+    };
+    const unsubLiveBezel = USE_FIRESTORE_REALTIME ? onSnapshot(liveBezelDoc, (snap) => {
       if (!snap.exists()) return;
       const latest = snap.data();
       if (!latest || latest.type !== 'bezel-gap') return;
@@ -3055,7 +3090,14 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       });
     }, (error) => {
       console.warn("Live bezel listener error:", error);
-    });
+    }) : () => {};
+    fetchLiveBezelOnce();
+    const liveBezelPollTimer = setInterval(fetchLiveBezelOnce, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(liveBezelPollTimer);
+      unsubLiveBezel();
+    };
   }, [db, appId, localMode]);
 
   useEffect(() => {
