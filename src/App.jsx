@@ -1415,42 +1415,101 @@ export default function App() {
     fetchStateOnce('polling');
 
     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
-    const applyAssetsList = (list) => {
+    const withTimeout = (promise, ms, message) => new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error(message || 'timeout')), ms);
+      promise.then(
+        (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          window.clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+    let assetsFetchInFlight = false;
+    let assetsRequestSeq = 0;
+    let latestAppliedAssetsSeq = 0;
+    let lastAssetsSource = 'none';
+    let lastAssetsCount = 0;
+    let lastAssetsAppliedAt = 0;
+    const applyAssetsList = (list, meta = {}) => {
       if (cancelled) return;
+      const source = meta.source || 'unknown';
+      const seq = Number(meta.seq) || 0;
+      const fromCache = Boolean(meta.fromCache);
+      const now = Date.now();
+
+      if (seq && seq < latestAppliedAssetsSeq) return;
+
+      const recentRestWindow = now - lastAssetsAppliedAt < 10000;
+      const wouldShrinkCacheSnapshot = (
+        source === 'sdk'
+        && fromCache
+        && lastAssetsSource === 'rest'
+        && recentRestWindow
+        && lastAssetsCount > 0
+        && list.length > 0
+        && list.length < lastAssetsCount
+      );
+      if (wouldShrinkCacheSnapshot) {
+        console.warn('Skipping stale cached asset snapshot that would shrink the list.', {
+          previousCount: lastAssetsCount,
+          nextCount: list.length,
+        });
+        return;
+      }
+
       setAssets(list);
+      if (seq) latestAppliedAssetsSeq = seq;
+      lastAssetsSource = source;
+      lastAssetsCount = list.length;
+      lastAssetsAppliedAt = now;
     };
-    const applyAssetsSnap = (snap) => {
+    const applyAssetsSnap = (snap, meta = {}) => {
       if (cancelled) return;
       const list = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      applyAssetsList(list);
+      applyAssetsList(list, {
+        ...meta,
+        source: meta.source || 'sdk',
+        fromCache: Boolean(snap?.metadata?.fromCache),
+      });
+    };
+    const fetchAssetsViaRest = async (seq) => {
+      const restAssets = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`);
+      if (restAssets.length > 0) {
+        applyAssetsList(restAssets, { source: 'rest', seq });
+      }
+      return restAssets;
     };
     const fetchAssetsOnce = async () => {
-      let restFallbackStarted = false;
-      let restFallbackTimer = null;
-      const startRestFallback = async () => {
-        if (restFallbackStarted || cancelled) return [];
-        restFallbackStarted = true;
-        const restAssets = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`);
-        if (restAssets.length > 0) applyAssetsList(restAssets);
-        return restAssets;
-      };
-      restFallbackTimer = setTimeout(() => {
-        startRestFallback().catch(restError => console.warn("Assets REST timed fallback failed:", restError));
-      }, SDK_READ_REST_FALLBACK_MS);
+      if (cancelled || assetsFetchInFlight) return;
+      assetsFetchInFlight = true;
+      const seq = ++assetsRequestSeq;
       try {
-        applyAssetsSnap(await getDocs(assetsCol));
-        clearTimeout(restFallbackTimer);
+        const snap = await withTimeout(
+          getDocs(assetsCol),
+          SDK_READ_REST_FALLBACK_MS + 1200,
+          'assets-sdk-timeout'
+        );
+        applyAssetsSnap(snap, { source: 'sdk', seq });
       } catch (err) {
-        clearTimeout(restFallbackTimer);
         console.log("Assets polling error:", err);
-        if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
+        if (
+          isFirestoreOfflineError(err)
+          || isFirestoreTransientError(err)
+          || String(err?.message || '').includes('assets-sdk-timeout')
+        ) {
           try {
-            await startRestFallback();
+            await fetchAssetsViaRest(seq);
           } catch (restError) {
             console.warn("Assets REST fallback failed:", restError);
           }
         }
+      } finally {
+        assetsFetchInFlight = false;
       }
     };
     const unsubAssets = USE_FIRESTORE_REALTIME
@@ -2398,6 +2457,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [adding, setAdding] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const assetListRef = useRef(null);
   const [uploadItems, setUploadItems] = useState([]);
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState('');
@@ -2647,9 +2707,22 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     try { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assets', id)); } catch (e) { console.error(e); }
   };
 
+  const handleModalWheel = (event) => {
+    event.stopPropagation();
+    const listEl = assetListRef.current;
+    if (!listEl) return;
+    const target = event.target;
+    if (target instanceof Element && listEl.contains(target)) return;
+    if (listEl.scrollHeight <= listEl.clientHeight + 1) return;
+    listEl.scrollTop += event.deltaY;
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 font-sans">
-      <div className="bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] min-h-0 animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-6 font-sans">
+      <div
+        className="my-4 bg-white rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] min-h-0 animate-in zoom-in-95 duration-200"
+        onWheel={handleModalWheel}
+      >
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <h2 className="font-semibold text-lg flex items-center gap-2 text-slate-800"><Library className="text-blue-500"/> 素材庫</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 bg-white p-1.5 rounded-full border shadow-sm transition-colors"><X size={18}/></button>
@@ -2754,6 +2827,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           )}
         </div>
         <div
+          ref={assetListRef}
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 bg-white"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
