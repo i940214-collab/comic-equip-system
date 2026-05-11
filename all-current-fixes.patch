@@ -2571,17 +2571,17 @@ index eaa1acc..1b117eb 100644
 2.50.1 (Apple Git-155)
 
 
-From 94552c737cc26caf2ff2f5e515bc94e9f5e6099e Mon Sep 17 00:00:00 2001
+From df6e84bf1080ed50eb68c8d7379747c8111061d1 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 20:18:35 +0800
 Subject: [PATCH 21/21] Improve display REST read fallback
 
 ---
- src/App.jsx | 119 +++++++++++++++++++++++++++++++++++++++++++---------
- 1 file changed, 99 insertions(+), 20 deletions(-)
+ src/App.jsx | 121 +++++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 101 insertions(+), 20 deletions(-)
 
 diff --git a/src/App.jsx b/src/App.jsx
-index 1b117eb..f1fc4a1 100644
+index 1b117eb..5ad6eb0 100644
 --- a/src/App.jsx
 +++ b/src/App.jsx
 @@ -108,12 +108,14 @@ const SCREEN_IDS = ['1', '2', '3'];
@@ -2619,7 +2619,15 @@ index 1b117eb..f1fc4a1 100644
    return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
  };
  const getTimelineSignature = (timeline = []) => timeline
-@@ -1303,12 +1313,18 @@ export default function App() {
+@@ -1057,6 +1067,7 @@ export default function App() {
+       const sdkWrite = setDoc(stateDoc, payload, { merge: true })
+         .then(() => {
+           sdkSettled = true;
++          startRestBackup(null, true);
+         })
+         .catch((error) => {
+           sdkSettled = true;
+@@ -1303,12 +1314,18 @@ export default function App() {
          console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
          clearTimeout(dataWarnTimeout);
          setErrorMsg(null);
@@ -2644,7 +2652,7 @@ index 1b117eb..f1fc4a1 100644
          setLoading(false);
          return;
        }
-@@ -1327,14 +1343,28 @@ export default function App() {
+@@ -1327,14 +1344,29 @@ export default function App() {
      };
  
      const fetchStateOnce = async (source = 'polling') => {
@@ -2665,6 +2673,7 @@ index 1b117eb..f1fc4a1 100644
          const docSnap = await getDoc(stateDoc);
 +        clearTimeout(restFallbackTimer);
          applyStateSnap(docSnap, source);
++        startRestFallback().catch(restError => console.warn("Firestore REST state check failed:", restError));
        } catch (err) {
 -        if (isFirestoreOfflineError(err)) {
 +        clearTimeout(restFallbackTimer);
@@ -2675,7 +2684,7 @@ index 1b117eb..f1fc4a1 100644
              return;
            } catch (restError) {
              console.warn("Firestore REST state fallback failed:", restError);
-@@ -1366,13 +1396,28 @@ export default function App() {
+@@ -1366,13 +1398,28 @@ export default function App() {
        applyAssetsList(list);
      };
      const fetchAssetsOnce = async () => {
@@ -2706,7 +2715,7 @@ index 1b117eb..f1fc4a1 100644
            } catch (restError) {
              console.warn("Assets REST fallback failed:", restError);
            }
-@@ -1429,14 +1474,26 @@ export default function App() {
+@@ -1429,14 +1476,26 @@ export default function App() {
          return restStatuses;
        };
        const fetchStatusOnce = async () => {
@@ -2736,7 +2745,7 @@ index 1b117eb..f1fc4a1 100644
                return;
              } catch (restError) {
                console.warn("Display status REST fallback failed:", restError);
-@@ -1717,7 +1774,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+@@ -1717,7 +1776,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
      return { id, status, online, ageSeconds };
    }), [displayStatuses, now]);
    const onlineCount = connectedScreens.filter(screen => screen.online).length;
@@ -2745,7 +2754,7 @@ index 1b117eb..f1fc4a1 100644
    const cloudStatusLabel = cloudSyncState === 'realtime'
      ? '雲端同步'
      : cloudSyncState === 'backup'
-@@ -2035,7 +2092,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+@@ -2035,7 +2094,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
              )}
              {cloudSyncState === 'not-ready' && (
                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -2754,7 +2763,7 @@ index 1b117eb..f1fc4a1 100644
                  {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
                    <span>Config: {syncInfo?.hasConfig ? 'present' : 'missing'}</span>
-@@ -2778,6 +2835,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -2778,6 +2837,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
    const [localPlaybackActive, setLocalPlaybackActive] = useState(Boolean(isPlaying));
    const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
    const lastPlaybackCommandIdRef = useRef('');
@@ -2762,7 +2771,7 @@ index 1b117eb..f1fc4a1 100644
    const assetUrlById = useMemo(() => {
      const map = {};
      (assets || []).forEach((asset) => {
-@@ -2867,15 +2925,35 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -2867,15 +2927,35 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
        if (cancelled || !snap.exists()) return;
        applyPlaybackCommand(snap.data());
      };
@@ -2801,7 +2810,7 @@ index 1b117eb..f1fc4a1 100644
            } catch (restError) {
              console.warn("Playback command REST fallback failed:", restError);
            }
-@@ -2975,6 +3053,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -2975,6 +3055,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
      const writeHeartbeat = () => {
        const snapshot = heartbeatSnapshotRef.current || {};
        const payload = {

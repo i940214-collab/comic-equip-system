@@ -1067,6 +1067,7 @@ export default function App() {
       const sdkWrite = setDoc(stateDoc, payload, { merge: true })
         .then(() => {
           sdkSettled = true;
+          startRestBackup(null, true);
         })
         .catch((error) => {
           sdkSettled = true;
@@ -1360,6 +1361,7 @@ export default function App() {
         const docSnap = await getDoc(stateDoc);
         clearTimeout(restFallbackTimer);
         applyStateSnap(docSnap, source);
+        startRestFallback().catch(restError => console.warn("Firestore REST state check failed:", restError));
       } catch (err) {
         clearTimeout(restFallbackTimer);
         if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
