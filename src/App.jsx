@@ -1964,8 +1964,8 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
       type: 'playback',
       command,
       commandId,
-      startTime: command === 'play' ? startAt : 0,
-      leadMs: command === 'play' ? SYNC_COMMAND_LEAD_MS : 0,
+      startTime: Number(startAt) || 0,
+      leadMs: Number(startAt) > 0 ? SYNC_COMMAND_LEAD_MS : 0,
       cycleElapsed: Math.max(0, Number(cycleElapsedSeconds) || 0),
       issuedAt,
     };
@@ -1990,6 +1990,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   const togglePlay = () => {
     const nextPlaying = !isPlaying;
     const nextStartTime = getFutureSyncTimestamp();
+    const pauseAt = getFutureSyncTimestamp();
     const commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const playbackNow = getPlaybackSnapshot(globalState, Date.now());
     const cycleElapsed = Math.max(0, Number(playbackNow?.cycleElapsed) || 0);
@@ -2000,22 +2001,22 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     updateGlobalState({
       isPlaying: nextPlaying,
       startTime: nextPlaying ? resumeStartTime : globalState.startTime,
-      pausedCycleElapsed: nextPlaying ? resumeCycleElapsed : cycleElapsed,
+      pausedCycleElapsed: nextPlaying ? resumeCycleElapsed : 0,
       playbackCommand: {
         type: 'playback',
         command: nextPlaying ? 'play' : 'pause',
         commandId,
-        startTime: nextPlaying ? nextStartTime : 0,
-        leadMs: nextPlaying ? SYNC_COMMAND_LEAD_MS : 0,
-        cycleElapsed: nextPlaying ? resumeCycleElapsed : cycleElapsed,
+        startTime: nextPlaying ? nextStartTime : pauseAt,
+        leadMs: SYNC_COMMAND_LEAD_MS,
+        cycleElapsed: nextPlaying ? resumeCycleElapsed : 0,
         issuedAt: Date.now(),
       }
     }, { immediate: true });
     emitPlaybackCommand(
       nextPlaying ? 'play' : 'pause',
-      nextStartTime,
+      nextPlaying ? nextStartTime : pauseAt,
       commandId,
-      nextPlaying ? resumeCycleElapsed : cycleElapsed
+      nextPlaying ? resumeCycleElapsed : 0
     );
   };
   const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() }, { immediate: true });
@@ -3028,6 +3029,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
   const [localPausedCycleElapsed, setLocalPausedCycleElapsed] = useState(() => Math.max(0, Number(globalState?.pausedCycleElapsed) || 0));
   const lastPlaybackCommandIdRef = useRef('');
+  const playbackCommandTimerRef = useRef(null);
   const lastPlaybackRestReadRef = useRef(0);
   const assetUrlById = useMemo(() => {
     const map = {};
@@ -3104,8 +3106,19 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   }, [audioUnlocked]);
 
   useEffect(() => {
-    setLocalPlaybackActive(Boolean(isPlaying));
-    if (!isPlaying || standbyMode) return;
+    if (!isPlaying) {
+      const pauseDelayMs = playbackCommand?.command === 'pause'
+        ? getApplyDelayMs(playbackCommand?.startTime || ((Number(playbackCommand?.issuedAt) || Date.now()) + (Number(playbackCommand?.leadMs) || 0)))
+        : 0;
+      if (pauseDelayMs <= 0) {
+        setLocalPausedCycleElapsed(Math.max(0, Number(globalState?.pausedCycleElapsed) || 0));
+        setLocalPlaybackActive(false);
+      }
+      return;
+    }
+
+    setLocalPlaybackActive(true);
+    if (standbyMode) return;
     const receivedAt = Date.now();
     if (playbackCommand?.command === 'play') {
       setLocalPausedCycleElapsed(Math.max(0, Number(playbackCommand?.cycleElapsed) || 0));
@@ -3123,6 +3136,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     playbackCommand?.issuedAt,
     playbackCommand?.leadMs,
     playbackCommand?.cycleElapsed,
+    globalState?.pausedCycleElapsed,
   ]);
 
   useEffect(() => {
@@ -3134,6 +3148,10 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     const commandId = commandData.commandId || `${commandData.command}-${commandData.issuedAt || commandData.startTime || ''}`;
     if (!commandId || commandId === lastPlaybackCommandIdRef.current) return;
     lastPlaybackCommandIdRef.current = commandId;
+    if (playbackCommandTimerRef.current) {
+      clearTimeout(playbackCommandTimerRef.current);
+      playbackCommandTimerRef.current = null;
+    }
 
     if (commandData.command === 'play') {
       const receivedAt = Date.now();
@@ -3144,10 +3162,21 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     }
 
     if (commandData.command === 'pause') {
-      setLocalPausedCycleElapsed(Math.max(0, Number(commandData?.cycleElapsed) || 0));
-      setLocalPlaybackActive(false);
+      const fallbackApplyAt = (Number(commandData?.issuedAt) || Date.now()) + (Number(commandData?.leadMs) || 0);
+      const applyDelayMs = getApplyDelayMs(commandData?.startTime || fallbackApplyAt);
+      playbackCommandTimerRef.current = setTimeout(() => {
+        setLocalPausedCycleElapsed(0);
+        setLocalPlaybackActive(false);
+        playbackCommandTimerRef.current = null;
+      }, applyDelayMs);
     }
   };
+
+  useEffect(() => () => {
+    if (!playbackCommandTimerRef.current) return;
+    clearTimeout(playbackCommandTimerRef.current);
+    playbackCommandTimerRef.current = null;
+  }, []);
 
   useEffect(() => {
     applyPlaybackCommand(playbackCommand);
