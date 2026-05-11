@@ -5,6 +5,8 @@ import {
   doc, 
   getDoc,
   setDoc, 
+  serverTimestamp,
+  enableNetwork,
   onSnapshot,
   collection,
   getDocs,
@@ -106,6 +108,7 @@ const OVERLAY_EFFECTS = [
 const SCREEN_IDS = ['1', '2', '3'];
 const HEARTBEAT_STALE_MS = 25000;
 const HEARTBEAT_INTERVAL_MS = 5000;
+const PLAYBACK_COMMAND_POLL_MS = 500;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
@@ -131,6 +134,22 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
   const parsed = Number(remoteTs) || now;
   if (parsed > now + MAX_SYNC_WAIT_MS) return now;
   return parsed;
+};
+const isFirestoreOfflineError = (error = {}) => {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === 'unavailable' || message.includes('client is offline') || message.includes('offline');
+};
+const toMillis = (value) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (Number.isFinite(value.seconds)) return (value.seconds * 1000) + Math.round((value.nanoseconds || 0) / 1000000);
+  return Number(value) || 0;
+};
+const getSynchronizedLocalStartTime = (remoteStartTime, receivedAt = Date.now()) => {
+  const parsedRemote = Number(remoteStartTime) || receivedAt;
+  const delta = parsedRemote - receivedAt;
+  return Math.abs(delta) <= MAX_SYNC_WAIT_MS ? receivedAt + delta : receivedAt;
 };
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
@@ -872,6 +891,17 @@ export default function App() {
 
     const handleFirestoreError = (err) => {
       if (cancelled) return;
+      if (isFirestoreOfflineError(err)) {
+        console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
+        setSyncInfo(prev => ({
+          ...prev,
+          mode: 'cloud-pending',
+          data: 'retrying-offline',
+          reason: 'Firestore temporarily offline, still retrying...',
+        }));
+        setLoading(false);
+        return;
+      }
       dataSettled = true;
       clearTimeout(dataWarnTimeout);
       console.error("Firestore error:", err);
@@ -888,6 +918,7 @@ export default function App() {
 
     const fetchStateOnce = async (source = 'polling') => {
       try {
+        await enableNetwork(db).catch(() => null);
         const docSnap = await getDoc(stateDoc);
         applyStateSnap(docSnap, source);
       } catch (err) {
@@ -1213,7 +1244,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   }), [activeScene, assetUrlById]);
   const connectedScreens = useMemo(() => SCREEN_IDS.map(id => {
     const status = displayStatuses?.[id] || {};
-    const lastSeen = Number(status.lastSeen) || 0;
+    const lastSeen = toMillis(status.lastSeenServer) || Number(status.lastSeen) || 0;
     const online = lastSeen > 0 && now - lastSeen < HEARTBEAT_STALE_MS;
     const ageSeconds = lastSeen > 0 ? Math.max(0, Math.round((now - lastSeen) / 1000)) : null;
     return { id, status, online, ageSeconds };
@@ -1246,7 +1277,37 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     updateGlobalState({ bgm: { ...bgm, url: nextUrl } }, { immediate: true });
   };
 
-  const togglePlay = () => updateGlobalState({ isPlaying: !isPlaying, startTime: getFutureSyncTimestamp() }, { immediate: true });
+  const emitPlaybackCommand = (command, startAt = 0, commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`) => {
+    if (!db || localMode) return;
+    const issuedAt = Date.now();
+    const playbackCommandDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'playback');
+    setDoc(playbackCommandDoc, {
+      type: 'playback',
+      command,
+      commandId,
+      startTime: command === 'play' ? startAt : 0,
+      issuedAt,
+      issuedAtServer: serverTimestamp(),
+    }, { merge: true }).catch(error => console.warn("Playback command sync failed:", error));
+  };
+
+  const togglePlay = () => {
+    const nextPlaying = !isPlaying;
+    const nextStartTime = getFutureSyncTimestamp();
+    const commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    updateGlobalState({
+      isPlaying: nextPlaying,
+      startTime: nextStartTime,
+      playbackCommand: {
+        type: 'playback',
+        command: nextPlaying ? 'play' : 'pause',
+        commandId,
+        startTime: nextPlaying ? nextStartTime : 0,
+        issuedAt: Date.now(),
+      }
+    }, { immediate: true });
+    emitPlaybackCommand(nextPlaying ? 'play' : 'pause', nextStartTime, commandId);
+  };
   const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() }, { immediate: true });
   const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
   const triggerFx = (id) => updateGlobalState({ fxTrigger: { id, timestamp: getFutureSyncTimestamp() } }, { immediate: true });
@@ -2168,6 +2229,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     bulletChats,
     overlayEffect,
     overlayApplyAt = 0,
+    playbackCommand,
   } = globalState;
   const cameraVideoRef = useRef(null);
   const bgmRef = useRef(null);
@@ -2197,6 +2259,9 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
   });
   const [liveBezelOverride, setLiveBezelOverride] = useState(null);
+  const [localPlaybackActive, setLocalPlaybackActive] = useState(Boolean(isPlaying));
+  const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
+  const lastPlaybackCommandIdRef = useRef('');
   const assetUrlById = useMemo(() => {
     const map = {};
     (assets || []).forEach((asset) => {
@@ -2222,7 +2287,66 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     return () => clearInterval(timer);
   }, []);
 
-  const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
+  useEffect(() => {
+    setLocalPlaybackActive(Boolean(isPlaying));
+    if (!isPlaying || standbyMode) return;
+    setLocalPlaybackStartTime(getSynchronizedLocalStartTime(startTime, Date.now()));
+  }, [isPlaying, standbyMode, startTime]);
+
+  const applyPlaybackCommand = (commandData = {}) => {
+    if (!commandData || commandData.type !== 'playback') return;
+    const commandId = commandData.commandId || `${commandData.command}-${commandData.issuedAt || commandData.startTime || ''}`;
+    if (!commandId || commandId === lastPlaybackCommandIdRef.current) return;
+    lastPlaybackCommandIdRef.current = commandId;
+
+    if (commandData.command === 'play') {
+      setLocalPlaybackActive(true);
+      setLocalPlaybackStartTime(getSynchronizedLocalStartTime(commandData.startTime, Date.now()));
+      return;
+    }
+
+    if (commandData.command === 'pause') {
+      setLocalPlaybackActive(false);
+    }
+  };
+
+  useEffect(() => {
+    applyPlaybackCommand(playbackCommand);
+  }, [playbackCommand?.commandId]);
+
+  useEffect(() => {
+    if (!db || localMode) return;
+    const playbackCommandDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'playback');
+    let cancelled = false;
+    const applyDoc = (snap) => {
+      if (cancelled || !snap.exists()) return;
+      applyPlaybackCommand(snap.data());
+    };
+    const fetchPlaybackCommand = async () => {
+      try {
+        applyDoc(await getDoc(playbackCommandDoc));
+      } catch (error) {
+        console.warn("Playback command polling failed:", error);
+      }
+    };
+    const unsubPlaybackCommand = onSnapshot(playbackCommandDoc, applyDoc, (error) => {
+      console.warn("Playback command listener error:", error);
+    });
+    fetchPlaybackCommand();
+    const playbackPollTimer = setInterval(fetchPlaybackCommand, PLAYBACK_COMMAND_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(playbackPollTimer);
+      unsubPlaybackCommand();
+    };
+  }, [db, appId, localMode]);
+
+  const displayPlaybackState = useMemo(() => (
+    localPlaybackActive && !standbyMode
+      ? { ...globalState, isPlaying: true, startTime: localPlaybackStartTime }
+      : { ...globalState, isPlaying: false }
+  ), [globalState, localPlaybackActive, standbyMode, localPlaybackStartTime]);
+  const playback = useMemo(() => getPlaybackSnapshot(displayPlaybackState, now), [displayPlaybackState, now]);
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
 
   useEffect(() => {
@@ -2266,11 +2390,11 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       sceneName: currentScene?.name || '未命名場景',
       contentType: currentScene?.isSpanMode ? currentScene?.spanType : screenData.type,
       isSpanMode: Boolean(currentScene?.isSpanMode),
-      isPlaying: Boolean(isPlaying),
+      isPlaying: Boolean(localPlaybackActive),
       standbyMode: Boolean(standbyMode),
       audioUnlocked: Boolean(audioUnlocked),
     };
-  }, [id, currentScene, isPlaying, standbyMode, audioUnlocked]);
+  }, [id, currentScene, localPlaybackActive, standbyMode, audioUnlocked]);
 
   useEffect(() => {
     if (!db || localMode) {
@@ -2305,7 +2429,10 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       };
 
       if (!localMode && db) {
-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), payload, { merge: true })
+        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), {
+          ...payload,
+          lastSeenServer: serverTimestamp(),
+        }, { merge: true })
           .catch(error => console.warn("Display heartbeat failed:", error));
         return;
       }
@@ -2316,7 +2443,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     writeHeartbeat();
     const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
     return () => clearInterval(heartbeatTimer);
-  }, [id, db, appId, localMode]);
+  }, [id, db, appId, localMode, audioUnlocked, localPlaybackActive, standbyMode, currentScene?.id]);
 
   useEffect(() => {
     let stream = null;
