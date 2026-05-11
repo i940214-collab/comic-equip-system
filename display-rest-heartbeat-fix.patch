@@ -1,0 +1,129 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index 8023c1a..d80ad5f 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -112,6 +112,7 @@ const PLAYBACK_COMMAND_POLL_MS = 500;
+ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
++const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 800;
+ const MAX_SYNC_WAIT_MS = 1200;
+@@ -149,6 +150,13 @@ const isFirestoreOfflineError = (error = {}) => {
+     || message.includes('webchannel')
+     || message.includes('transport errored');
+ };
++const isCloudDataUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
++const isCloudDisplayUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
++const getCloudSyncState = (syncInfo = {}) => {
++  if (syncInfo.mode !== 'cloud') return 'not-ready';
++  if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
++  return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
++};
+ const toMillis = (value) => {
+   if (!value) return 0;
+   if (typeof value === 'number') return value;
+@@ -1324,14 +1332,20 @@ export default function App() {
+         });
+         applyStatusList(Object.values(nextStatuses));
+       };
++      const fetchStatusViaRest = async () => {
++        const restStatuses = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/displayStatus`);
++        if (restStatuses.length > 0) applyStatusList(restStatuses, 'rest');
++        return restStatuses;
++      };
+       const fetchStatusOnce = async () => {
+         try {
+           applyStatusSnap(await getDocs(statusCol));
++          fetchStatusViaRest().catch(restError => console.warn("Display status REST check failed:", restError));
+         } catch (err) {
+           console.log("Display status polling error:", err);
+           if (isFirestoreOfflineError(err)) {
+             try {
+-              applyStatusList(await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/displayStatus`), 'rest');
++              await fetchStatusViaRest();
+               return;
+             } catch (restError) {
+               console.warn("Display status REST fallback failed:", restError);
+@@ -1607,7 +1621,17 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+     return { id, status, online, ageSeconds };
+   }), [displayStatuses, now]);
+   const onlineCount = connectedScreens.filter(screen => screen.online).length;
+-  const isCloudReady = syncInfo?.mode === 'cloud' && syncInfo?.displayStatus === 'connected';
++  const cloudSyncState = getCloudSyncState(syncInfo);
++  const cloudStatusLabel = cloudSyncState === 'realtime'
++    ? '雲端同步'
++    : cloudSyncState === 'backup'
++      ? '雲端備援同步'
++      : '本機/未完整同步';
++  const cloudStatusClass = cloudSyncState === 'realtime'
++    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
++    : cloudSyncState === 'backup'
++      ? 'text-sky-700 bg-sky-50 border-sky-200'
++      : 'text-amber-700 bg-amber-100 border-amber-200';
+ 
+   useEffect(() => {
+     const timer = setInterval(() => setNow(Date.now()), 500);
+@@ -1889,11 +1913,20 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">螢幕連線</div>
+                 <div className="text-lg font-semibold text-slate-900">{onlineCount}/3 在線</div>
+               </div>
+-              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${isCloudReady ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-100 border-amber-200'}`}>
+-                {isCloudReady ? '雲端同步' : '本機/未完整同步'}
++              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${cloudStatusClass}`}>
++                {cloudStatusLabel}
+               </span>
+             </div>
+-            {!isCloudReady && (
++            {cloudSyncState === 'backup' && (
++              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
++                Firestore 即時通道不穩，已改用雲端備援同步。跨裝置仍會更新，通常會有 1-3 秒延遲。
++                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
++                  <span>Data: {syncInfo?.data || 'unknown'}</span>
++                  <span>Display: {syncInfo?.displayStatus || 'unknown'}</span>
++                </div>
++              </div>
++            )}
++            {cloudSyncState === 'not-ready' && (
+               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                 手機跨裝置連線需要雲端同步。若同一台電腦兩個分頁會顯示、手機不會，代表目前沒有成功使用 Firestore 心跳。
+                 {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
+@@ -2838,17 +2871,33 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+       };
+ 
+       if (!localMode && db) {
++        const restPayload = {
++          ...payload,
++          lastSeenServer: Date.now(),
++        };
++        const writeHeartbeatViaRest = () => (
++          setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/displayStatus/${id}`, restPayload)
++            .catch(restError => console.warn("Display heartbeat REST fallback failed:", restError))
++        );
++        let heartbeatSettled = false;
++        const fallbackTimer = setTimeout(() => {
++          if (!heartbeatSettled) writeHeartbeatViaRest();
++        }, DISPLAY_HEARTBEAT_REST_FALLBACK_MS);
++
+         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), {
+           ...payload,
+           lastSeenServer: serverTimestamp(),
+         }, { merge: true })
++          .then(() => {
++            heartbeatSettled = true;
++            clearTimeout(fallbackTimer);
++          })
+           .catch((error) => {
++            heartbeatSettled = true;
++            clearTimeout(fallbackTimer);
+             console.warn("Display heartbeat failed:", error);
+             if (isFirestoreOfflineError(error)) {
+-              setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/displayStatus/${id}`, {
+-                ...payload,
+-                lastSeenServer: Date.now(),
+-              }).catch(restError => console.warn("Display heartbeat REST fallback failed:", restError));
++              writeHeartbeatViaRest();
+             }
+           });
+         return;
