@@ -1062,22 +1062,24 @@ export default function App() {
 
   const keepRecentLocalStateIfNewer = (incomingState, source = 'realtime') => {
     const guard = localWriteGuardRef.current;
-    if (!guard?.state || Date.now() > guard.until) return false;
-
-    const localState = guard.state;
+    const currentState = globalStateRef.current || DEFAULT_STATE;
+    const guardState = guard?.state && Date.now() <= guard.until ? guard.state : null;
+    const localState = Number(guardState?.updatedAt) > Number(currentState?.updatedAt)
+      ? guardState
+      : currentState;
     const localUpdatedAt = Number(localState.updatedAt) || 0;
     const incomingUpdatedAt = Number(incomingState.updatedAt) || 0;
-    if (localUpdatedAt && incomingUpdatedAt && incomingUpdatedAt >= localUpdatedAt) return false;
+    const staleByTimestamp = localUpdatedAt && (!incomingUpdatedAt || incomingUpdatedAt < localUpdatedAt);
 
     const localTimeline = Array.isArray(localState.timeline) ? localState.timeline : [];
     const incomingTimeline = Array.isArray(incomingState.timeline) ? incomingState.timeline : [];
-    const timelineLooksOlder = localTimeline.length > incomingTimeline.length
+    const timelineLooksOlder = staleByTimestamp && (localTimeline.length > incomingTimeline.length
       || (localTimeline.length === incomingTimeline.length
-        && getTimelineSignature(localTimeline) !== getTimelineSignature(incomingTimeline));
-    const stateLooksOlder = localUpdatedAt && (!incomingUpdatedAt || incomingUpdatedAt < localUpdatedAt);
+        && getTimelineSignature(localTimeline) !== getTimelineSignature(incomingTimeline)));
 
-    if (!timelineLooksOlder && !stateLooksOlder) return false;
+    if (!staleByTimestamp && !timelineLooksOlder) return false;
 
+    localWriteGuardRef.current = { until: Date.now() + LOCAL_WRITE_PROTECT_MS, state: localState };
     globalStateRef.current = localState;
     setGlobalState(localState);
     setLoading(false);
