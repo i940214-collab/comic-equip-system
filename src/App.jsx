@@ -108,12 +108,14 @@ const SCREEN_IDS = ['1', '2', '3'];
 const HEARTBEAT_STALE_MS = 60000;
 const HEARTBEAT_INTERVAL_MS = 2000;
 const PLAYBACK_COMMAND_POLL_MS = 500;
+const PLAYBACK_COMMAND_REST_CHECK_MS = 1500;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
 const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
 const ASSET_WRITE_REST_FALLBACK_MS = 900;
+const SDK_READ_REST_FALLBACK_MS = 900;
 const LOCAL_WRITE_PROTECT_MS = 8000;
 const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 800;
@@ -1327,14 +1329,28 @@ export default function App() {
     };
 
     const fetchStateOnce = async (source = 'polling') => {
+      let restFallbackStarted = false;
+      let restFallbackTimer = null;
+      const startRestFallback = async () => {
+        if (restFallbackStarted || cancelled) return null;
+        restFallbackStarted = true;
+        const restState = await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`);
+        if (!cancelled) applyStateData(restState, 'rest');
+        return restState;
+      };
+      restFallbackTimer = setTimeout(() => {
+        startRestFallback().catch(restError => console.warn("Firestore REST state timed fallback failed:", restError));
+      }, SDK_READ_REST_FALLBACK_MS);
       try {
         await enableNetwork(db).catch(() => null);
         const docSnap = await getDoc(stateDoc);
+        clearTimeout(restFallbackTimer);
         applyStateSnap(docSnap, source);
       } catch (err) {
-        if (isFirestoreOfflineError(err)) {
+        clearTimeout(restFallbackTimer);
+        if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
           try {
-            applyStateData(await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`), 'rest');
+            await startRestFallback();
             return;
           } catch (restError) {
             console.warn("Firestore REST state fallback failed:", restError);
@@ -1366,13 +1382,28 @@ export default function App() {
       applyAssetsList(list);
     };
     const fetchAssetsOnce = async () => {
+      let restFallbackStarted = false;
+      let restFallbackTimer = null;
+      const startRestFallback = async () => {
+        if (restFallbackStarted || cancelled) return [];
+        restFallbackStarted = true;
+        const restAssets = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`);
+        if (restAssets.length > 0) applyAssetsList(restAssets);
+        return restAssets;
+      };
+      restFallbackTimer = setTimeout(() => {
+        startRestFallback().catch(restError => console.warn("Assets REST timed fallback failed:", restError));
+      }, SDK_READ_REST_FALLBACK_MS);
       try {
         applyAssetsSnap(await getDocs(assetsCol));
+        clearTimeout(restFallbackTimer);
+        startRestFallback().catch(restError => console.warn("Assets REST check failed:", restError));
       } catch (err) {
+        clearTimeout(restFallbackTimer);
         console.log("Assets polling error:", err);
-        if (isFirestoreOfflineError(err)) {
+        if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
           try {
-            applyAssetsList(await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`));
+            await startRestFallback();
           } catch (restError) {
             console.warn("Assets REST fallback failed:", restError);
           }
@@ -1429,14 +1460,26 @@ export default function App() {
         return restStatuses;
       };
       const fetchStatusOnce = async () => {
+        let restFallbackStarted = false;
+        let restFallbackTimer = null;
+        const startRestFallback = async () => {
+          if (restFallbackStarted || cancelled) return [];
+          restFallbackStarted = true;
+          return fetchStatusViaRest();
+        };
+        restFallbackTimer = setTimeout(() => {
+          startRestFallback().catch(restError => console.warn("Display status REST timed fallback failed:", restError));
+        }, SDK_READ_REST_FALLBACK_MS);
         try {
           applyStatusSnap(await getDocs(statusCol));
-          fetchStatusViaRest().catch(restError => console.warn("Display status REST check failed:", restError));
+          clearTimeout(restFallbackTimer);
+          startRestFallback().catch(restError => console.warn("Display status REST check failed:", restError));
         } catch (err) {
+          clearTimeout(restFallbackTimer);
           console.log("Display status polling error:", err);
-          if (isFirestoreOfflineError(err)) {
+          if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
             try {
-              await fetchStatusViaRest();
+              await startRestFallback();
               return;
             } catch (restError) {
               console.warn("Display status REST fallback failed:", restError);
@@ -2778,6 +2821,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const [localPlaybackActive, setLocalPlaybackActive] = useState(Boolean(isPlaying));
   const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
   const lastPlaybackCommandIdRef = useRef('');
+  const lastPlaybackRestReadRef = useRef(0);
   const assetUrlById = useMemo(() => {
     const map = {};
     (assets || []).forEach((asset) => {
@@ -2867,15 +2911,35 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       if (cancelled || !snap.exists()) return;
       applyPlaybackCommand(snap.data());
     };
+    const fetchPlaybackCommandViaRest = async (force = false) => {
+      const nowTs = Date.now();
+      if (!force && nowTs - lastPlaybackRestReadRef.current < PLAYBACK_COMMAND_REST_CHECK_MS) return null;
+      lastPlaybackRestReadRef.current = nowTs;
+      const restCommand = await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/playback`);
+      if (!cancelled && restCommand) applyPlaybackCommand(restCommand);
+      return restCommand;
+    };
     const fetchPlaybackCommand = async () => {
+      let restFallbackStarted = false;
+      let restFallbackTimer = null;
+      const startRestFallback = async (force = false) => {
+        if (restFallbackStarted || cancelled) return null;
+        restFallbackStarted = true;
+        return fetchPlaybackCommandViaRest(force);
+      };
+      restFallbackTimer = setTimeout(() => {
+        startRestFallback(true).catch(restError => console.warn("Playback command REST timed fallback failed:", restError));
+      }, SDK_READ_REST_FALLBACK_MS);
       try {
         applyDoc(await getDoc(playbackCommandDoc));
+        clearTimeout(restFallbackTimer);
+        startRestFallback(false).catch(restError => console.warn("Playback command REST check failed:", restError));
       } catch (error) {
+        clearTimeout(restFallbackTimer);
         console.warn("Playback command polling failed:", error);
-        if (isFirestoreOfflineError(error)) {
+        if (isFirestoreOfflineError(error) || isFirestoreTransientError(error)) {
           try {
-            const restCommand = await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/playback`);
-            if (!cancelled && restCommand) applyPlaybackCommand(restCommand);
+            await startRestFallback(true);
           } catch (restError) {
             console.warn("Playback command REST fallback failed:", restError);
           }
@@ -2975,6 +3039,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     const writeHeartbeat = () => {
       const snapshot = heartbeatSnapshotRef.current || {};
       const payload = {
+        id,
         screenId: id,
         lastSeen: Date.now(),
         ...snapshot,
