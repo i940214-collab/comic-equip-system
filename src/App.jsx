@@ -216,6 +216,11 @@ const getPlaybackStartTimeFromCommand = (commandData = {}, receivedAt = Date.now
 
   return getSynchronizedLocalStartTime(remoteStartTime, receivedAt);
 };
+const getPlaybackAnchorStartTimeFromCommand = (commandData = {}, receivedAt = Date.now()) => {
+  const scheduledStartAt = getPlaybackStartTimeFromCommand(commandData, receivedAt);
+  const cycleElapsedSeconds = Math.max(0, Number(commandData?.cycleElapsed) || 0);
+  return scheduledStartAt - (cycleElapsedSeconds * 1000);
+};
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
@@ -785,6 +790,7 @@ const DEFAULT_STATE = {
   timeline: [DEFAULT_SCENE],
   isPlaying: false,
   startTime: Date.now(),
+  pausedCycleElapsed: 0,
   standbyMode: false,
   standbyApplyAt: 0,
   marquee: { active: false, text: '歡迎蒞臨！', applyAt: 0 },
@@ -801,6 +807,7 @@ const normalizeGlobalState = (data = {}) => ({
   ...data,
   timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
   bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
+  pausedCycleElapsed: Number.isFinite(data.pausedCycleElapsed) ? Math.max(0, Number(data.pausedCycleElapsed)) : 0,
   stats: data.stats || { chatCount: 0, likes: 0 },
 });
 
@@ -834,36 +841,35 @@ const formatSeconds = (seconds = 0) => {
 
 const getContentTypeLabel = (type) => CONTENT_TYPES.find(item => item.id === type)?.label || type || '未設定';
 
-const getPlaybackSnapshot = (globalState, now = Date.now()) => {
-  const timeline = Array.isArray(globalState.timeline) && globalState.timeline.length > 0 ? globalState.timeline : [DEFAULT_SCENE];
-  const totalDuration = timeline.reduce((acc, scene) => acc + (Number(scene?.duration) || 10), 0);
-  const paused = !globalState.isPlaying || globalState.standbyMode || totalDuration <= 0;
-
-  if (paused) {
-    const scene = timeline[0] || DEFAULT_SCENE;
+const getSceneSnapshotFromCycleElapsed = (timeline, cycleElapsedInput) => {
+  const safeTimeline = Array.isArray(timeline) && timeline.length > 0 ? timeline : [DEFAULT_SCENE];
+  const totalDuration = safeTimeline.reduce((acc, scene) => acc + (Number(scene?.duration) || 10), 0);
+  if (totalDuration <= 0) {
+    const fallbackScene = safeTimeline[0] || DEFAULT_SCENE;
     return {
-      scene,
+      scene: fallbackScene,
       sceneIndex: 0,
-      totalScenes: timeline.length,
-      totalDuration,
+      totalScenes: safeTimeline.length,
+      totalDuration: 0,
       sceneElapsed: 0,
-      sceneRemaining: Number(scene?.duration) || 10,
+      sceneRemaining: Number(fallbackScene?.duration) || 10,
       cycleElapsed: 0,
       sceneProgress: 0,
       cycleProgress: 0,
     };
   }
 
-  const safeStartTime = getSafeRemoteTimestamp(globalState.startTime, now);
-  const elapsedSecs = Math.max(0, (now - safeStartTime) / 1000);
-  const cycleElapsed = elapsedSecs % totalDuration;
+  let cycleElapsed = Number(cycleElapsedInput);
+  if (!Number.isFinite(cycleElapsed)) cycleElapsed = 0;
+  cycleElapsed = Math.max(0, cycleElapsed);
+  const stableElapsed = cycleElapsed % totalDuration;
+
   let accumulated = 0;
   let sceneIndex = 0;
   let sceneStart = 0;
-
-  for (let i = 0; i < timeline.length; i++) {
-    const duration = Number(timeline[i]?.duration) || 10;
-    if (cycleElapsed < accumulated + duration) {
+  for (let i = 0; i < safeTimeline.length; i++) {
+    const duration = Number(safeTimeline[i]?.duration) || 10;
+    if (stableElapsed < accumulated + duration) {
       sceneIndex = i;
       sceneStart = accumulated;
       break;
@@ -871,21 +877,34 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
     accumulated += duration;
   }
 
-  const scene = timeline[sceneIndex] || timeline[0] || DEFAULT_SCENE;
+  const scene = safeTimeline[sceneIndex] || safeTimeline[0] || DEFAULT_SCENE;
   const sceneDuration = Number(scene?.duration) || 10;
-  const sceneElapsed = Math.max(0, cycleElapsed - sceneStart);
-
+  const sceneElapsed = Math.max(0, stableElapsed - sceneStart);
   return {
     scene,
     sceneIndex,
-    totalScenes: timeline.length,
+    totalScenes: safeTimeline.length,
     totalDuration,
     sceneElapsed,
     sceneRemaining: Math.max(0, sceneDuration - sceneElapsed),
-    cycleElapsed,
+    cycleElapsed: stableElapsed,
     sceneProgress: Math.min(100, (sceneElapsed / sceneDuration) * 100),
-    cycleProgress: Math.min(100, (cycleElapsed / totalDuration) * 100),
+    cycleProgress: Math.min(100, (stableElapsed / totalDuration) * 100),
   };
+};
+
+const getPlaybackSnapshot = (globalState, now = Date.now()) => {
+  const timeline = Array.isArray(globalState.timeline) && globalState.timeline.length > 0 ? globalState.timeline : [DEFAULT_SCENE];
+  const totalDuration = timeline.reduce((acc, scene) => acc + (Number(scene?.duration) || 10), 0);
+  const paused = !globalState.isPlaying || globalState.standbyMode || totalDuration <= 0;
+
+  if (paused) {
+    return getSceneSnapshotFromCycleElapsed(timeline, globalState.pausedCycleElapsed || 0);
+  }
+
+  const safeStartTime = getSafeRemoteTimestamp(globalState.startTime, now);
+  const elapsedSecs = Math.max(0, (now - safeStartTime) / 1000);
+  return getSceneSnapshotFromCycleElapsed(timeline, elapsedSecs);
 };
 
 const getLocalStatusKey = (projectId, screenId) => `projection-display-status-${projectId}-${screenId}`;
@@ -1140,11 +1159,16 @@ export default function App() {
 
     const localTimeline = Array.isArray(localState.timeline) ? localState.timeline : [];
     const incomingTimeline = Array.isArray(incomingState.timeline) ? incomingState.timeline : [];
+    const incomingOnlyDefaultScene = incomingTimeline.length === 1
+      && incomingTimeline[0]?.id === DEFAULT_SCENE.id
+      && incomingTimeline[0]?.name === DEFAULT_SCENE.name;
+    const localHasMultipleScenes = localTimeline.length > 1;
+    const suspiciousTimelineReset = localHasMultipleScenes && incomingOnlyDefaultScene;
     const timelineLooksOlder = staleByTimestamp && (localTimeline.length > incomingTimeline.length
       || (localTimeline.length === incomingTimeline.length
         && getTimelineSignature(localTimeline) !== getTimelineSignature(incomingTimeline)));
 
-    if (!staleByTimestamp && !timelineLooksOlder) return false;
+    if (!suspiciousTimelineReset && !staleByTimestamp && !timelineLooksOlder) return false;
 
     localWriteGuardRef.current = { until: Date.now() + LOCAL_WRITE_PROTECT_MS, state: localState };
     globalStateRef.current = localState;
@@ -1329,15 +1353,20 @@ export default function App() {
           }));
           return;
         }
-        setDoc(stateDoc, DEFAULT_STATE).catch((error) => {
-          console.error("Initial setDoc failed:", error);
-          if (isFirestoreOfflineError(error)) {
-            setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`, DEFAULT_STATE)
-              .catch(restError => console.error("Initial REST state write failed:", restError));
-          }
-        });
-        globalStateRef.current = DEFAULT_STATE;
-        setGlobalState(DEFAULT_STATE);
+        // Do not auto-write DEFAULT_STATE here.
+        // Any client (especially display clients) writing default data can overwrite
+        // an existing multi-scene timeline when transient reads happen.
+        globalStateRef.current = normalizeGlobalState(globalStateRef.current || DEFAULT_STATE);
+        setGlobalState(globalStateRef.current);
+        setLoading(false);
+        setIsDbMissing(false);
+        setSyncInfo(prev => ({
+          ...prev,
+          mode: 'cloud-pending',
+          data: source === 'rest' ? 'rest-backup' : source === 'polling' ? 'polling-backup' : 'retrying-transient',
+          reason: 'Cloud state is empty, waiting for the latest snapshot.',
+        }));
+        return;
       }
       setLoading(false);
       setIsDbMissing(false);
@@ -1922,7 +1951,12 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     updateGlobalState({ bgm: { ...bgm, url: nextUrl } }, { immediate: true });
   };
 
-  const emitPlaybackCommand = (command, startAt = 0, commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`) => {
+  const emitPlaybackCommand = (
+    command,
+    startAt = 0,
+    commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    cycleElapsedSeconds = 0
+  ) => {
     if (!db || localMode) return;
     const issuedAt = Date.now();
     const playbackCommandDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'playback');
@@ -1932,6 +1966,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
       commandId,
       startTime: command === 'play' ? startAt : 0,
       leadMs: command === 'play' ? SYNC_COMMAND_LEAD_MS : 0,
+      cycleElapsed: Math.max(0, Number(cycleElapsedSeconds) || 0),
       issuedAt,
     };
     setDoc(playbackCommandDoc, {
@@ -1956,19 +1991,32 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     const nextPlaying = !isPlaying;
     const nextStartTime = getFutureSyncTimestamp();
     const commandId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const playbackNow = getPlaybackSnapshot(globalState, Date.now());
+    const cycleElapsed = Math.max(0, Number(playbackNow?.cycleElapsed) || 0);
+    const resumeCycleElapsed = nextPlaying
+      ? Math.max(0, Number(globalState?.pausedCycleElapsed) || cycleElapsed)
+      : cycleElapsed;
+    const resumeStartTime = nextStartTime - (resumeCycleElapsed * 1000);
     updateGlobalState({
       isPlaying: nextPlaying,
-      startTime: nextStartTime,
+      startTime: nextPlaying ? resumeStartTime : globalState.startTime,
+      pausedCycleElapsed: nextPlaying ? resumeCycleElapsed : cycleElapsed,
       playbackCommand: {
         type: 'playback',
         command: nextPlaying ? 'play' : 'pause',
         commandId,
         startTime: nextPlaying ? nextStartTime : 0,
         leadMs: nextPlaying ? SYNC_COMMAND_LEAD_MS : 0,
+        cycleElapsed: nextPlaying ? resumeCycleElapsed : cycleElapsed,
         issuedAt: Date.now(),
       }
     }, { immediate: true });
-    emitPlaybackCommand(nextPlaying ? 'play' : 'pause', nextStartTime, commandId);
+    emitPlaybackCommand(
+      nextPlaying ? 'play' : 'pause',
+      nextStartTime,
+      commandId,
+      nextPlaying ? resumeCycleElapsed : cycleElapsed
+    );
   };
   const toggleStandby = () => updateGlobalState({ standbyMode: !standbyMode, standbyApplyAt: Date.now() }, { immediate: true });
   const toggleBgm = () => updateGlobalState({ bgm: { ...bgm, url: bgmUrlDraft.trim(), active: !bgm.active, applyAt: getFutureSyncTimestamp() } }, { immediate: true });
@@ -2975,6 +3023,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const [liveBezelOverride, setLiveBezelOverride] = useState(null);
   const [localPlaybackActive, setLocalPlaybackActive] = useState(Boolean(isPlaying));
   const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
+  const [localPausedCycleElapsed, setLocalPausedCycleElapsed] = useState(() => Math.max(0, Number(globalState?.pausedCycleElapsed) || 0));
   const lastPlaybackCommandIdRef = useRef('');
   const lastPlaybackRestReadRef = useRef(0);
   const assetUrlById = useMemo(() => {
@@ -3036,7 +3085,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     if (!isPlaying || standbyMode) return;
     const receivedAt = Date.now();
     if (playbackCommand?.command === 'play') {
-      setLocalPlaybackStartTime(getPlaybackStartTimeFromCommand(playbackCommand, receivedAt));
+      setLocalPausedCycleElapsed(Math.max(0, Number(playbackCommand?.cycleElapsed) || 0));
+      setLocalPlaybackStartTime(getPlaybackAnchorStartTimeFromCommand(playbackCommand, receivedAt));
       return;
     }
     setLocalPlaybackStartTime(getSynchronizedLocalStartTime(startTime, receivedAt));
@@ -3049,7 +3099,12 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     playbackCommand?.startTime,
     playbackCommand?.issuedAt,
     playbackCommand?.leadMs,
+    playbackCommand?.cycleElapsed,
   ]);
+
+  useEffect(() => {
+    setLocalPausedCycleElapsed(Math.max(0, Number(globalState?.pausedCycleElapsed) || 0));
+  }, [globalState?.pausedCycleElapsed]);
 
   const applyPlaybackCommand = (commandData = {}) => {
     if (!commandData || commandData.type !== 'playback') return;
@@ -3060,11 +3115,13 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     if (commandData.command === 'play') {
       const receivedAt = Date.now();
       setLocalPlaybackActive(true);
-      setLocalPlaybackStartTime(getPlaybackStartTimeFromCommand(commandData, receivedAt));
+      setLocalPausedCycleElapsed(Math.max(0, Number(commandData?.cycleElapsed) || 0));
+      setLocalPlaybackStartTime(getPlaybackAnchorStartTimeFromCommand(commandData, receivedAt));
       return;
     }
 
     if (commandData.command === 'pause') {
+      setLocalPausedCycleElapsed(Math.max(0, Number(commandData?.cycleElapsed) || 0));
       setLocalPlaybackActive(false);
     }
   };
@@ -3132,8 +3189,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const displayPlaybackState = useMemo(() => (
     localPlaybackActive && !standbyMode
       ? { ...globalState, isPlaying: true, startTime: localPlaybackStartTime }
-      : { ...globalState, isPlaying: false }
-  ), [globalState, localPlaybackActive, standbyMode, localPlaybackStartTime]);
+      : { ...globalState, isPlaying: false, pausedCycleElapsed: localPausedCycleElapsed }
+  ), [globalState, localPlaybackActive, standbyMode, localPlaybackStartTime, localPausedCycleElapsed]);
   const playback = useMemo(() => getPlaybackSnapshot(displayPlaybackState, now), [displayPlaybackState, now]);
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
 
