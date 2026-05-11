@@ -550,9 +550,84 @@ const toFirestoreRestValue = (value) => {
   return { stringValue: String(value) };
 };
 
-const addAssetDocumentViaRest = async (projectId, assetData) => {
+const fromFirestoreRestValue = (value = {}) => {
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return Number(value.doubleValue);
+  if ('booleanValue' in value) return Boolean(value.booleanValue);
+  if ('nullValue' in value) return null;
+  if ('timestampValue' in value) return new Date(value.timestampValue).getTime();
+  if ('arrayValue' in value) return (value.arrayValue.values || []).map(fromFirestoreRestValue);
+  if ('mapValue' in value) {
+    return Object.fromEntries(
+      Object.entries(value.mapValue.fields || {}).map(([key, nestedValue]) => [key, fromFirestoreRestValue(nestedValue)])
+    );
+  }
+  return null;
+};
+
+const fromFirestoreRestDocument = (document = {}) => ({
+  id: decodeURIComponent((document.name || '').split('/').pop() || ''),
+  ...Object.fromEntries(
+    Object.entries(document.fields || {}).map(([key, value]) => [key, fromFirestoreRestValue(value)])
+  ),
+});
+
+const getFirestoreRestToken = async () => {
   const idToken = await auth?.currentUser?.getIdToken?.().catch(() => '');
   if (!idToken) throw new Error('Firestore 登入尚未完成，請稍後再試。');
+  return idToken;
+};
+
+const getFirestoreRestUrl = (projectId, path, query = '') => {
+  const encodedPath = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodedPath}${query}`;
+};
+
+const fetchFirestoreRest = async (projectId, path, options = {}) => {
+  const idToken = await getFirestoreRestToken();
+  const response = await fetch(getFirestoreRestUrl(projectId, path, options.query || ''), {
+    method: options.method || 'GET',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`firestore-rest-${response.status}: ${detail || 'request failed'}`);
+  }
+  return response.json();
+};
+
+const getFirestoreRestDocument = async (projectId, documentPath) => {
+  const document = await fetchFirestoreRest(projectId, documentPath);
+  return document ? fromFirestoreRestDocument(document) : null;
+};
+
+const listFirestoreRestCollection = async (projectId, collectionPath) => {
+  const payload = await fetchFirestoreRest(projectId, collectionPath, { query: '?pageSize=200' });
+  return (payload?.documents || []).map(fromFirestoreRestDocument);
+};
+
+const setFirestoreRestDocument = async (projectId, documentPath, data) => {
+  const fields = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, toFirestoreRestValue(value)]));
+  const updateMask = Object.keys(data)
+    .map(key => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
+    .join('&');
+  const document = await fetchFirestoreRest(projectId, documentPath, {
+    method: 'PATCH',
+    query: updateMask ? `?${updateMask}` : '',
+    body: { fields },
+  });
+  return document ? fromFirestoreRestDocument(document) : null;
+};
+
+const addAssetDocumentViaRest = async (projectId, assetData) => {
+  const idToken = await getFirestoreRestToken();
 
   const fields = Object.fromEntries(Object.entries(assetData).map(([key, value]) => [key, toFirestoreRestValue(value)]));
   const response = await fetch(
@@ -928,15 +1003,19 @@ export default function App() {
   const enqueueCloudWrite = (payload, immediate = false) => {
     if (!db || !payload || Object.keys(payload).length === 0) return Promise.resolve();
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
+    const writeStateRestFallback = (error) => {
+      console.error("Update error:", error);
+      if (!isFirestoreOfflineError(error)) return Promise.resolve();
+      return setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`, payload)
+        .catch(restError => console.error("REST update error:", restError));
+    };
     if (immediate) {
-      return setDoc(stateDoc, payload, { merge: true }).catch((error) => {
-        console.error("Update error:", error);
-      });
+      return setDoc(stateDoc, payload, { merge: true }).catch(writeStateRestFallback);
     }
     cloudWriteChainRef.current = cloudWriteChainRef.current
       .catch(() => null)
       .then(() => setDoc(stateDoc, payload, { merge: true }))
-      .catch((error) => console.error("Update error:", error));
+      .catch(writeStateRestFallback);
     return cloudWriteChainRef.current;
   };
 
@@ -1086,16 +1165,22 @@ export default function App() {
     let cancelled = false;
     let dataWarnTimeout = null;
 
-    const applyStateSnap = (docSnap, source = 'realtime') => {
+    const applyStateData = (data, source = 'realtime') => {
       if (cancelled) return;
       dataSettled = true;
       clearTimeout(dataWarnTimeout);
-      if (docSnap.exists()) {
-        const nextState = normalizeGlobalState(docSnap.data());
+      if (data) {
+        const nextState = normalizeGlobalState(data);
         globalStateRef.current = nextState;
         setGlobalState(nextState);
       } else {
-        setDoc(stateDoc, DEFAULT_STATE).catch(e => console.error("Initial setDoc failed:", e));
+        setDoc(stateDoc, DEFAULT_STATE).catch((error) => {
+          console.error("Initial setDoc failed:", error);
+          if (isFirestoreOfflineError(error)) {
+            setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`, DEFAULT_STATE)
+              .catch(restError => console.error("Initial REST state write failed:", restError));
+          }
+        });
         globalStateRef.current = DEFAULT_STATE;
         setGlobalState(DEFAULT_STATE);
       }
@@ -1104,9 +1189,13 @@ export default function App() {
       setSyncInfo(prev => ({
         ...prev,
         mode: 'cloud',
-        data: source === 'polling' ? 'polling-backup' : 'connected',
+        data: source === 'rest' ? 'rest-backup' : source === 'polling' ? 'polling-backup' : 'connected',
         reason: '',
       }));
+    };
+
+    const applyStateSnap = (docSnap, source = 'realtime') => {
+      applyStateData(docSnap.exists() ? docSnap.data() : null, source);
     };
 
     const handleFirestoreError = (err) => {
@@ -1144,6 +1233,14 @@ export default function App() {
         const docSnap = await getDoc(stateDoc);
         applyStateSnap(docSnap, source);
       } catch (err) {
+        if (isFirestoreOfflineError(err)) {
+          try {
+            applyStateData(await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`), 'rest');
+            return;
+          } catch (restError) {
+            console.warn("Firestore REST state fallback failed:", restError);
+          }
+        }
         handleFirestoreError(err);
       }
     };
@@ -1159,17 +1256,28 @@ export default function App() {
     const unsubState = onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError);
 
     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
+    const applyAssetsList = (list) => {
+      if (cancelled) return;
+      setAssets(list);
+    };
     const applyAssetsSnap = (snap) => {
       if (cancelled) return;
       const list = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-      setAssets(list);
+      applyAssetsList(list);
     };
     const fetchAssetsOnce = async () => {
       try {
         applyAssetsSnap(await getDocs(assetsCol));
       } catch (err) {
         console.log("Assets polling error:", err);
+        if (isFirestoreOfflineError(err)) {
+          try {
+            applyAssetsList(await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`));
+          } catch (restError) {
+            console.warn("Assets REST fallback failed:", restError);
+          }
+        }
       }
     };
     const unsubAssets = onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err));
@@ -1193,14 +1301,28 @@ export default function App() {
     if (!localMode && db) {
       const statusCol = collection(db, 'artifacts', appId, 'public', 'data', 'displayStatus');
       let cancelled = false;
+      const applyStatusList = (list, source = 'realtime') => {
+        if (cancelled) return;
+        const nextStatuses = {};
+        list.forEach(item => {
+          if (!item?.id) return;
+          nextStatuses[item.id] = item;
+        });
+        setDisplayStatuses(nextStatuses);
+        setSyncInfo(prev => ({
+          ...prev,
+          mode: prev.mode === 'local' ? prev.mode : 'cloud',
+          displayStatus: source === 'rest' ? 'rest-backup' : 'connected',
+          reason: '',
+        }));
+      };
       const applyStatusSnap = (snap) => {
         if (cancelled) return;
         const nextStatuses = {};
         snap.forEach(d => {
           nextStatuses[d.id] = { id: d.id, ...d.data() };
         });
-        setDisplayStatuses(nextStatuses);
-        setSyncInfo(prev => ({ ...prev, displayStatus: 'connected' }));
+        applyStatusList(Object.values(nextStatuses));
       };
       const fetchStatusOnce = async () => {
         try {
@@ -1208,6 +1330,12 @@ export default function App() {
         } catch (err) {
           console.log("Display status polling error:", err);
           if (isFirestoreOfflineError(err)) {
+            try {
+              applyStatusList(await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/displayStatus`), 'rest');
+              return;
+            } catch (restError) {
+              console.warn("Display status REST fallback failed:", restError);
+            }
             setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
           }
         }
@@ -1510,14 +1638,25 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     if (!db || localMode) return;
     const issuedAt = Date.now();
     const playbackCommandDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'playback');
-    setDoc(playbackCommandDoc, {
+    const commandPayload = {
       type: 'playback',
       command,
       commandId,
       startTime: command === 'play' ? startAt : 0,
       issuedAt,
+    };
+    setDoc(playbackCommandDoc, {
+      ...commandPayload,
       issuedAtServer: serverTimestamp(),
-    }, { merge: true }).catch(error => console.warn("Playback command sync failed:", error));
+    }, { merge: true }).catch((error) => {
+      console.warn("Playback command sync failed:", error);
+      if (isFirestoreOfflineError(error)) {
+        setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/playback`, {
+          ...commandPayload,
+          issuedAtServer: issuedAt,
+        }).catch(restError => console.warn("Playback command REST fallback failed:", restError));
+      }
+    });
   };
 
   const togglePlay = () => {
@@ -2586,6 +2725,14 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
         applyDoc(await getDoc(playbackCommandDoc));
       } catch (error) {
         console.warn("Playback command polling failed:", error);
+        if (isFirestoreOfflineError(error)) {
+          try {
+            const restCommand = await getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/playback`);
+            if (!cancelled && restCommand) applyPlaybackCommand(restCommand);
+          } catch (restError) {
+            console.warn("Playback command REST fallback failed:", restError);
+          }
+        }
       }
     };
     const unsubPlaybackCommand = onSnapshot(playbackCommandDoc, applyDoc, (error) => {
@@ -2695,7 +2842,15 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
           ...payload,
           lastSeenServer: serverTimestamp(),
         }, { merge: true })
-          .catch(error => console.warn("Display heartbeat failed:", error));
+          .catch((error) => {
+            console.warn("Display heartbeat failed:", error);
+            if (isFirestoreOfflineError(error)) {
+              setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/displayStatus/${id}`, {
+                ...payload,
+                lastSeenServer: Date.now(),
+              }).catch(restError => console.warn("Display heartbeat REST fallback failed:", restError));
+            }
+          });
         return;
       }
 
