@@ -1,7 +1,7 @@
 From 13e5a7d4786a558a36a6872d17027b5239e45fc5 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 20:32:16 +0800
-Subject: [PATCH 01/18] Improve MOV upload timeout
+Subject: [PATCH 01/20] Improve MOV upload timeout
 
 ---
  .github/workflows/deploy-pages.yml |  1 -
@@ -67,7 +67,7 @@ index e17cc91..85e805a 100644
 From c745b3ddb8e41adef4384a9ab43d84be45e17a0e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 20:49:45 +0800
-Subject: [PATCH 02/18] Add Firestore polling fallback
+Subject: [PATCH 02/20] Add Firestore polling fallback
 
 ---
  src/App.jsx | 112 +++++++++++++++++++++++++++++++++++++++++-----------
@@ -266,7 +266,7 @@ index 85e805a..dc5e351 100644
 From 189abab74ee9e2be172d2aebafa525a23064c1ea Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 22:21:13 +0800
-Subject: [PATCH 03/18] Fix video uploads
+Subject: [PATCH 03/20] Fix video uploads
 
 ---
  src/App.jsx | 107 ++++++++++++++++++++++++++++++++++++++++++----------
@@ -459,7 +459,7 @@ index dc5e351..349dce6 100644
 From 27f9ddcc22003e610706b3a1d03e482fcbe3c1b1 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 23:33:38 +0800
-Subject: [PATCH 04/18] Show upload speed and ETA
+Subject: [PATCH 04/20] Show upload speed and ETA
 
 ---
  src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++--
@@ -564,7 +564,7 @@ index 349dce6..cb1ccad 100644
 From 4bddd44c8234bc4b977a0689d1399e571071d743 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 00:01:29 +0800
-Subject: [PATCH 05/18] Fallback to direct video uploads
+Subject: [PATCH 05/20] Fallback to direct video uploads
 
 ---
  src/App.jsx | 76 +++++++++++++++++++++++++++++++++++++----------------
@@ -708,7 +708,7 @@ index cb1ccad..43c0762 100644
 From 40cc38b70f0f7bef096237db7c23411539e91e59 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:22:26 +0800
-Subject: [PATCH 06/18] Stabilize display heartbeat and playback sync
+Subject: [PATCH 06/20] Stabilize display heartbeat and playback sync
 
 ---
  src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++----
@@ -840,7 +840,7 @@ index 43c0762..4fda860 100644
 From e054431be6c9d062ea766a4f37e3617f9ef137f6 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:44:13 +0800
-Subject: [PATCH 07/18] Add playback command channel
+Subject: [PATCH 07/20] Add playback command channel
 
 ---
  src/App.jsx | 99 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1014,7 +1014,7 @@ index 4fda860..d95400c 100644
 From c1f965580c86c76a2c8bdf6b88b823edbed9202b Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:53:33 +0800
-Subject: [PATCH 08/18] Stabilize display connection heartbeat
+Subject: [PATCH 08/20] Stabilize display connection heartbeat
 
 ---
  src/App.jsx | 59 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1133,7 +1133,7 @@ index d95400c..53ceb77 100644
 From b2371eecffb9d34cac1425f10550c4a150c01eb0 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:36:09 +0800
-Subject: [PATCH 09/18] Improve multi-display playback timing
+Subject: [PATCH 09/20] Improve multi-display playback timing
 
 ---
  src/App.jsx | 37 +++++++++++++++++++++++++++++++++++--
@@ -1225,7 +1225,7 @@ index 53ceb77..164fea3 100644
 From 98b35cbb3995e568b1e7deb9dd5fa9dec843046e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:53:41 +0800
-Subject: [PATCH 10/18] Speed up asset uploads
+Subject: [PATCH 10/20] Speed up asset uploads
 
 ---
  src/App.jsx | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
@@ -1415,7 +1415,7 @@ index 164fea3..dc24519 100644
 From 183589f290d8b400ef2ed4183415b7ff0e85d641 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:10:09 +0800
-Subject: [PATCH 11/18] Treat Firestore internal assertion as transient
+Subject: [PATCH 11/20] Treat Firestore internal assertion as transient
 
 ---
  src/App.jsx | 22 +++++++++++++++++++---
@@ -1482,7 +1482,7 @@ index dc24519..3759bd7 100644
 From b35738f04602e0921bddbc0a211dbf00ab989d5f Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:29:53 +0800
-Subject: [PATCH 12/18] Fallback asset metadata writes to Firestore REST
+Subject: [PATCH 12/20] Fallback asset metadata writes to Firestore REST
 
 ---
  src/App.jsx | 62 +++++++++++++++++++++++++++++++++++++++++++++++++++--
@@ -1584,7 +1584,7 @@ index 3759bd7..b566697 100644
 From f99def477a5712855f179fa3bb977eab2d6a55e3 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:39:29 +0800
-Subject: [PATCH 13/18] Add REST fallback for display sync
+Subject: [PATCH 13/20] Add REST fallback for display sync
 
 ---
  src/App.jsx | 187 +++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1904,7 +1904,7 @@ index b566697..8fd0731 100644
 From 4c3879e6c49bba90b7f355f7242745e942861d04 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:52:09 +0800
-Subject: [PATCH 14/18] Bypass Storage for image uploads
+Subject: [PATCH 14/20] Bypass Storage for image uploads
 
 ---
  src/App.jsx | 14 +++++++-------
@@ -1958,7 +1958,7 @@ index 8fd0731..8023c1a 100644
 From b018ba0e47475ad7cb27048e9e2fe38726c660bb Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 15:56:15 +0800
-Subject: [PATCH 15/18] Improve REST backup display heartbeats
+Subject: [PATCH 15/20] Improve REST backup display heartbeats
 
 ---
  src/App.jsx | 67 ++++++++++++++++++++++++++++++++++++++++++++++-------
@@ -2100,7 +2100,7 @@ index 8023c1a..d80ad5f 100644
 From 9f3c7b0e742c4c81106aa0c01526efdb4f55477a Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 16:29:56 +0800
-Subject: [PATCH 16/18] Use REST backup for scene updates
+Subject: [PATCH 16/20] Use REST backup for scene updates
 
 ---
  src/App.jsx | 55 +++++++++++++++++++++++++++++++++++++++++++++--------
@@ -2200,7 +2200,7 @@ index d80ad5f..3e5a4ba 100644
 From 7118eb46d8bbfec053b30d20e534b2832c2aedcc Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 17:12:46 +0800
-Subject: [PATCH 17/18] Prevent stale cloud state from hiding new scenes
+Subject: [PATCH 17/20] Prevent stale cloud state from hiding new scenes
 
 ---
  src/App.jsx | 47 +++++++++++++++++++++++++++++++++++++++++++++--
@@ -2318,7 +2318,7 @@ index 3e5a4ba..e07473b 100644
 From a14eaec1e3159e76372c2b9697c7cf660c0dcc27 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 18:29:54 +0800
-Subject: [PATCH 18/18] Keep local scene edits over stale backup state
+Subject: [PATCH 18/20] Keep local scene edits over stale backup state
 
 ---
  src/App.jsx | 18 ++++++++++--------
@@ -2361,6 +2361,212 @@ index e07473b..346f66d 100644
      globalStateRef.current = localState;
      setGlobalState(localState);
      setLoading(false);
+-- 
+2.50.1 (Apple Git-155)
+
+
+From b4906eb5bfc1a602bb40f03a9aeffe0538fd8d3d Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 19:13:02 +0800
+Subject: [PATCH 19/20] Fallback asset writes to REST when SDK stalls
+
+---
+ src/App.jsx | 90 +++++++++++++++++++++++++++++++++++------------------
+ 1 file changed, 59 insertions(+), 31 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 346f66d..eaa1acc 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -10,8 +10,7 @@ import {
+   onSnapshot,
+   collection,
+   getDocs,
+-  deleteDoc,
+-  addDoc
++  deleteDoc
+ } from 'firebase/firestore';
+ import { 
+   getStorage, 
+@@ -114,6 +113,7 @@ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
+ const CLOUD_WRITE_REST_FALLBACK_MS = 900;
+ const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
++const ASSET_WRITE_REST_FALLBACK_MS = 900;
+ const LOCAL_WRITE_PROTECT_MS = 8000;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 800;
+@@ -626,6 +626,8 @@ const listFirestoreRestCollection = async (projectId, collectionPath) => {
+   return (payload?.documents || []).map(fromFirestoreRestDocument);
+ };
+ 
++const createAssetDocumentId = () => `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
++
+ const setFirestoreRestDocument = async (projectId, documentPath, data) => {
+   const fields = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, toFirestoreRestValue(value)]));
+   const updateMask = Object.keys(data)
+@@ -640,37 +642,56 @@ const setFirestoreRestDocument = async (projectId, documentPath, data) => {
+ };
+ 
+ const addAssetDocumentViaRest = async (projectId, assetData) => {
+-  const idToken = await getFirestoreRestToken();
+-
+-  const fields = Object.fromEntries(Object.entries(assetData).map(([key, value]) => [key, toFirestoreRestValue(value)]));
+-  const response = await fetch(
+-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/artifacts/${encodeURIComponent(projectId)}/public/data/assets`,
+-    {
+-      method: 'POST',
+-      headers: {
+-        Authorization: `Bearer ${idToken}`,
+-        'Content-Type': 'application/json',
+-      },
+-      body: JSON.stringify({ fields }),
+-    }
++  const documentId = assetData.id || createAssetDocumentId();
++  await setFirestoreRestDocument(
++    projectId,
++    `artifacts/${projectId}/public/data/assets/${documentId}`,
++    { ...assetData, id: documentId }
+   );
+-
+-  if (!response.ok) {
+-    const detail = await response.text().catch(() => '');
+-    throw new Error(`firestore-rest-${response.status}: ${detail || 'asset write failed'}`);
+-  }
+-
+-  return response.json();
++  return { id: documentId, ...assetData };
+ };
+ 
+ const addAssetDocument = async (db, appId, assetData) => {
+-  try {
+-    return await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), assetData);
+-  } catch (error) {
+-    if (!isFirestoreOfflineError(error)) throw error;
+-    console.warn('Firestore SDK asset write failed; using REST fallback:', error);
+-    return addAssetDocumentViaRest(appId, assetData);
+-  }
++  const documentId = assetData.id || createAssetDocumentId();
++  const payload = { ...assetData, id: documentId };
++  if (!db) return addAssetDocumentViaRest(appId, payload);
++  const assetDoc = doc(db, 'artifacts', appId, 'public', 'data', 'assets', documentId);
++  const writeAssetViaRest = (error, force = false) => {
++    if (error) console.warn('Firestore SDK asset write delayed or failed; using REST fallback:', error);
++    if (!force && !isFirestoreOfflineError(error)) return Promise.reject(error);
++    return addAssetDocumentViaRest(appId, payload);
++  };
++
++  let sdkSettled = false;
++  let restStarted = false;
++  const startRestBackup = (error, force = false) => {
++    if (restStarted) return Promise.resolve({ id: documentId, ...payload });
++    restStarted = true;
++    return writeAssetViaRest(error, force);
++  };
++
++  const sdkWrite = setDoc(assetDoc, payload, { merge: true })
++    .then(() => {
++      sdkSettled = true;
++      return { id: documentId, ...payload };
++    })
++    .catch((error) => {
++      sdkSettled = true;
++      return startRestBackup(error);
++    });
++
++  const timeoutBackup = new Promise((resolve, reject) => {
++    const timer = window.setTimeout(() => {
++      if (sdkSettled) {
++        resolve({ id: documentId, ...payload });
++        return;
++      }
++      startRestBackup(new Error('Firestore asset write delayed; using REST backup'), true).then(resolve, reject);
++    }, ASSET_WRITE_REST_FALLBACK_MS);
++    sdkWrite.finally(() => window.clearTimeout(timer));
++  });
++
++  return Promise.race([sdkWrite, timeoutBackup]);
+ };
+ 
+ const getUploadErrorMessage = (error, fileType) => {
+@@ -2306,6 +2327,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+     setUploadItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+   };
+ 
++  const upsertAssetLocally = (asset) => {
++    if (!asset?.id) return;
++    setAssets(prev => [asset, ...prev.filter(existing => existing.id !== asset.id)]);
++  };
++
+   const formatFileSize = (bytes = 0) => {
+     if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+     if (bytes < 1024) return `${bytes} B`;
+@@ -2360,7 +2386,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+       return;
+     }
+     try {
+-      await runWithTimeout(
++      const savedAsset = await runWithTimeout(
+         addAssetDocument(db, appId, {
+           name: newName,
+           url: newUrl,
+@@ -2370,6 +2396,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+         12000,
+         '雲端連線逾時，請稍後再試。'
+       );
++      upsertAssetLocally(savedAsset);
+       setNewUrl('');
+       setNewName('');
+       setUploadSuccess('網址素材已加入素材庫。');
+@@ -2466,7 +2493,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+           patchUploadItem(itemId, { progress: 86, message: '寫入雲端中...' });
+         }
+ 
+-        await runWithTimeout(
++        const savedAsset = await runWithTimeout(
+           addAssetDocument(db, appId, {
+             name: assetName,
+             url: assetUrl,
+@@ -2479,6 +2506,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+           12000,
+           '素材寫入逾時，請稍後再試。'
+         );
++        upsertAssetLocally(savedAsset);
+ 
+         patchUploadItem(itemId, { status: 'done', progress: 100, message: '完成' });
+         successCount += 1;
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 979cc624a85ec2429792e3263c98ee513971a911 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 19:30:01 +0800
+Subject: [PATCH 20/20] Wait for asset REST fallback before success
+
+---
+ src/App.jsx | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index eaa1acc..1b117eb 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -664,10 +664,12 @@ const addAssetDocument = async (db, appId, assetData) => {
+ 
+   let sdkSettled = false;
+   let restStarted = false;
++  let restPromise = null;
+   const startRestBackup = (error, force = false) => {
+-    if (restStarted) return Promise.resolve({ id: documentId, ...payload });
++    if (restStarted) return restPromise || Promise.resolve({ id: documentId, ...payload });
+     restStarted = true;
+-    return writeAssetViaRest(error, force);
++    restPromise = writeAssetViaRest(error, force);
++    return restPromise;
+   };
+ 
+   const sdkWrite = setDoc(assetDoc, payload, { merge: true })
 -- 
 2.50.1 (Apple Git-155)
 

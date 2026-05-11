@@ -1,0 +1,31 @@
+From 979cc624a85ec2429792e3263c98ee513971a911 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 19:30:01 +0800
+Subject: [PATCH] Wait for asset REST fallback before success
+
+---
+ src/App.jsx | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index eaa1acc..1b117eb 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -664,10 +664,12 @@ const addAssetDocument = async (db, appId, assetData) => {
+ 
+   let sdkSettled = false;
+   let restStarted = false;
++  let restPromise = null;
+   const startRestBackup = (error, force = false) => {
+-    if (restStarted) return Promise.resolve({ id: documentId, ...payload });
++    if (restStarted) return restPromise || Promise.resolve({ id: documentId, ...payload });
+     restStarted = true;
+-    return writeAssetViaRest(error, force);
++    restPromise = writeAssetViaRest(error, force);
++    return restPromise;
+   };
+ 
+   const sdkWrite = setDoc(assetDoc, payload, { merge: true })
+-- 
+2.50.1 (Apple Git-155)
+
