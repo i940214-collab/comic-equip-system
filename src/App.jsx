@@ -156,9 +156,17 @@ const isFirestoreOfflineError = (error = {}) => {
 };
 const isCloudDataUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
 const isCloudDisplayUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
-const getCloudSyncState = (syncInfo = {}) => {
+const isCloudDataRecovering = (status) => ['pending', 'timeout-waiting', 'retrying-transient'].includes(status);
+const getCloudSyncState = (syncInfo = {}, options = {}) => {
+  const hasOnlineDisplays = Number(options.onlineCount) > 0;
+  const displayUsable = isCloudDisplayUsable(syncInfo.displayStatus) || hasOnlineDisplays;
+  const dataUsable = isCloudDataUsable(syncInfo.data);
+  const dataRecovering = isCloudDataRecovering(syncInfo.data);
+  if (syncInfo.mode === 'cloud' || syncInfo.mode === 'cloud-pending') {
+    if (displayUsable && (dataUsable || dataRecovering)) return dataUsable && syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
+  }
   if (syncInfo.mode !== 'cloud') return 'not-ready';
-  if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
+  if (!dataUsable || !displayUsable) return 'not-ready';
   return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
 };
 const getTimelineSignature = (timeline = []) => timeline
@@ -1305,12 +1313,18 @@ export default function App() {
         console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
         clearTimeout(dataWarnTimeout);
         setErrorMsg(null);
-        setSyncInfo(prev => ({
-          ...prev,
-          mode: 'cloud-pending',
-          data: 'retrying-transient',
-          reason: 'Firestore transient error, still retrying...',
-        }));
+        getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`)
+          .then(restState => applyStateData(restState, 'rest'))
+          .catch(restError => console.warn("Firestore REST state fallback after listener error failed:", restError));
+        setSyncInfo(prev => {
+          const hasUsableData = isCloudDataUsable(prev.data);
+          return {
+            ...prev,
+            mode: hasUsableData ? 'cloud' : 'cloud-pending',
+            data: hasUsableData ? prev.data : 'retrying-transient',
+            reason: hasUsableData ? '' : 'Firestore transient error, still retrying...',
+          };
+        });
         setLoading(false);
         return;
       }
@@ -1760,7 +1774,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
     return { id, status, online, ageSeconds };
   }), [displayStatuses, now]);
   const onlineCount = connectedScreens.filter(screen => screen.online).length;
-  const cloudSyncState = getCloudSyncState(syncInfo);
+  const cloudSyncState = getCloudSyncState(syncInfo, { onlineCount });
   const cloudStatusLabel = cloudSyncState === 'realtime'
     ? '雲端同步'
     : cloudSyncState === 'backup'
@@ -2078,7 +2092,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
             )}
             {cloudSyncState === 'not-ready' && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                手機跨裝置連線需要雲端同步。若同一台電腦兩個分頁會顯示、手機不會，代表目前沒有成功使用 Firestore 心跳。
+                跨裝置連線尚未完成。若螢幕已開啟但仍顯示未連線，請先重新整理顯示端頁面。
                 {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
                 <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
                   <span>Config: {syncInfo?.hasConfig ? 'present' : 'missing'}</span>

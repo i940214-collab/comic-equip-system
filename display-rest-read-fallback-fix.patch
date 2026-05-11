@@ -1,14 +1,14 @@
-From f970a19c0c36460908dfca462b81f6818aadc89a Mon Sep 17 00:00:00 2001
+From 94552c737cc26caf2ff2f5e515bc94e9f5e6099e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 20:18:35 +0800
 Subject: [PATCH] Improve display REST read fallback
 
 ---
- src/App.jsx | 85 ++++++++++++++++++++++++++++++++++++++++++++++-------
- 1 file changed, 75 insertions(+), 10 deletions(-)
+ src/App.jsx | 119 +++++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 99 insertions(+), 20 deletions(-)
 
 diff --git a/src/App.jsx b/src/App.jsx
-index 1b117eb..91fc673 100644
+index 1b117eb..f1fc4a1 100644
 --- a/src/App.jsx
 +++ b/src/App.jsx
 @@ -108,12 +108,14 @@ const SCREEN_IDS = ['1', '2', '3'];
@@ -26,7 +26,52 @@ index 1b117eb..91fc673 100644
  const LOCAL_WRITE_PROTECT_MS = 8000;
  const BEZEL_GAP_MAX = 400;
  const SYNC_COMMAND_LEAD_MS = 800;
-@@ -1327,14 +1329,28 @@ export default function App() {
+@@ -154,9 +156,17 @@ const isFirestoreOfflineError = (error = {}) => {
+ };
+ const isCloudDataUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
+ const isCloudDisplayUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
+-const getCloudSyncState = (syncInfo = {}) => {
++const isCloudDataRecovering = (status) => ['pending', 'timeout-waiting', 'retrying-transient'].includes(status);
++const getCloudSyncState = (syncInfo = {}, options = {}) => {
++  const hasOnlineDisplays = Number(options.onlineCount) > 0;
++  const displayUsable = isCloudDisplayUsable(syncInfo.displayStatus) || hasOnlineDisplays;
++  const dataUsable = isCloudDataUsable(syncInfo.data);
++  const dataRecovering = isCloudDataRecovering(syncInfo.data);
++  if (syncInfo.mode === 'cloud' || syncInfo.mode === 'cloud-pending') {
++    if (displayUsable && (dataUsable || dataRecovering)) return dataUsable && syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
++  }
+   if (syncInfo.mode !== 'cloud') return 'not-ready';
+-  if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
++  if (!dataUsable || !displayUsable) return 'not-ready';
+   return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
+ };
+ const getTimelineSignature = (timeline = []) => timeline
+@@ -1303,12 +1313,18 @@ export default function App() {
+         console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
+         clearTimeout(dataWarnTimeout);
+         setErrorMsg(null);
+-        setSyncInfo(prev => ({
+-          ...prev,
+-          mode: 'cloud-pending',
+-          data: 'retrying-transient',
+-          reason: 'Firestore transient error, still retrying...',
+-        }));
++        getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`)
++          .then(restState => applyStateData(restState, 'rest'))
++          .catch(restError => console.warn("Firestore REST state fallback after listener error failed:", restError));
++        setSyncInfo(prev => {
++          const hasUsableData = isCloudDataUsable(prev.data);
++          return {
++            ...prev,
++            mode: hasUsableData ? 'cloud' : 'cloud-pending',
++            data: hasUsableData ? prev.data : 'retrying-transient',
++            reason: hasUsableData ? '' : 'Firestore transient error, still retrying...',
++          };
++        });
+         setLoading(false);
+         return;
+       }
+@@ -1327,14 +1343,28 @@ export default function App() {
      };
  
      const fetchStateOnce = async (source = 'polling') => {
@@ -57,7 +102,7 @@ index 1b117eb..91fc673 100644
              return;
            } catch (restError) {
              console.warn("Firestore REST state fallback failed:", restError);
-@@ -1366,13 +1382,28 @@ export default function App() {
+@@ -1366,13 +1396,28 @@ export default function App() {
        applyAssetsList(list);
      };
      const fetchAssetsOnce = async () => {
@@ -88,7 +133,7 @@ index 1b117eb..91fc673 100644
            } catch (restError) {
              console.warn("Assets REST fallback failed:", restError);
            }
-@@ -1429,14 +1460,26 @@ export default function App() {
+@@ -1429,14 +1474,26 @@ export default function App() {
          return restStatuses;
        };
        const fetchStatusOnce = async () => {
@@ -118,7 +163,25 @@ index 1b117eb..91fc673 100644
                return;
              } catch (restError) {
                console.warn("Display status REST fallback failed:", restError);
-@@ -2778,6 +2821,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -1717,7 +1774,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+     return { id, status, online, ageSeconds };
+   }), [displayStatuses, now]);
+   const onlineCount = connectedScreens.filter(screen => screen.online).length;
+-  const cloudSyncState = getCloudSyncState(syncInfo);
++  const cloudSyncState = getCloudSyncState(syncInfo, { onlineCount });
+   const cloudStatusLabel = cloudSyncState === 'realtime'
+     ? '雲端同步'
+     : cloudSyncState === 'backup'
+@@ -2035,7 +2092,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+             )}
+             {cloudSyncState === 'not-ready' && (
+               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+-                手機跨裝置連線需要雲端同步。若同一台電腦兩個分頁會顯示、手機不會，代表目前沒有成功使用 Firestore 心跳。
++                跨裝置連線尚未完成。若螢幕已開啟但仍顯示未連線，請先重新整理顯示端頁面。
+                 {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
+                 <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
+                   <span>Config: {syncInfo?.hasConfig ? 'present' : 'missing'}</span>
+@@ -2778,6 +2835,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
    const [localPlaybackActive, setLocalPlaybackActive] = useState(Boolean(isPlaying));
    const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
    const lastPlaybackCommandIdRef = useRef('');
@@ -126,7 +189,7 @@ index 1b117eb..91fc673 100644
    const assetUrlById = useMemo(() => {
      const map = {};
      (assets || []).forEach((asset) => {
-@@ -2867,15 +2911,35 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -2867,15 +2925,35 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
        if (cancelled || !snap.exists()) return;
        applyPlaybackCommand(snap.data());
      };
@@ -165,7 +228,7 @@ index 1b117eb..91fc673 100644
            } catch (restError) {
              console.warn("Playback command REST fallback failed:", restError);
            }
-@@ -2975,6 +3039,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+@@ -2975,6 +3053,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
      const writeHeartbeat = () => {
        const snapshot = heartbeatSnapshotRef.current || {};
        const payload = {
