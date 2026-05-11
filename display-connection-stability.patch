@@ -1,0 +1,118 @@
+From c1f965580c86c76a2c8bdf6b88b823edbed9202b Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 12:53:33 +0800
+Subject: [PATCH] Stabilize display connection heartbeat
+
+---
+ src/App.jsx | 59 ++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 54 insertions(+), 5 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index d95400c..53ceb77 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -106,8 +106,8 @@ const OVERLAY_EFFECTS = [
+ ];
+ 
+ const SCREEN_IDS = ['1', '2', '3'];
+-const HEARTBEAT_STALE_MS = 25000;
+-const HEARTBEAT_INTERVAL_MS = 5000;
++const HEARTBEAT_STALE_MS = 60000;
++const HEARTBEAT_INTERVAL_MS = 2000;
+ const PLAYBACK_COMMAND_POLL_MS = 500;
+ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+@@ -555,6 +555,37 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
+ 
+ const getLocalStatusKey = (projectId, screenId) => `projection-display-status-${projectId}-${screenId}`;
+ 
++const getInitialRoute = () => {
++  if (typeof window === 'undefined') return { viewMode: 'select', screenId: null };
++
++  const params = new URLSearchParams(window.location.search);
++  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
++  const routeScreenId = params.get('screen') || params.get('display');
++  const hashScreenMatch = hash.match(/^(?:screen|display)-?([123])$/) || hash.match(/^([123])$/);
++  const screenId = SCREEN_IDS.includes(routeScreenId) ? routeScreenId : hashScreenMatch?.[1];
++
++  if (SCREEN_IDS.includes(screenId)) return { viewMode: 'display', screenId };
++  if (params.get('mode') === 'controller' || hash === 'controller') return { viewMode: 'controller', screenId: null };
++  if (params.get('mode') === 'chat' || hash === 'chat') return { viewMode: 'chat-client', screenId: null };
++
++  return { viewMode: 'select', screenId: null };
++};
++
++const updateBrowserRoute = (viewMode, screenId) => {
++  if (typeof window === 'undefined') return;
++  const nextHash = viewMode === 'display' && SCREEN_IDS.includes(screenId)
++    ? `#screen-${screenId}`
++    : viewMode === 'controller'
++      ? '#controller'
++      : viewMode === 'chat-client'
++        ? '#chat'
++        : '';
++  const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
++  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
++    window.history.replaceState(null, '', nextUrl);
++  }
++};
++
+ const getSpanPreviewStyle = (screenId, bezelGap = 0) => {
+   const scaledGap = Math.max(0, Math.round((Number(bezelGap) || 0) * 0.18));
+   return {
+@@ -668,9 +699,10 @@ function SpanModePreviewGrid({ scene }) {
+ }
+ 
+ export default function App() {
++  const initialRoute = useMemo(getInitialRoute, []);
+   const [user, setUser] = useState(null);
+-  const [viewMode, setViewMode] = useState('select'); 
+-  const [screenId, setScreenId] = useState(null);
++  const [viewMode, setViewMode] = useState(initialRoute.viewMode);
++  const [screenId, setScreenId] = useState(initialRoute.screenId);
+   const [globalState, setGlobalState] = useState(DEFAULT_STATE);
+   const globalStateRef = useRef(DEFAULT_STATE);
+   const [staticAssets, setStaticAssets] = useState([]);
+@@ -699,6 +731,10 @@ export default function App() {
+     globalStateRef.current = globalState;
+   }, [globalState]);
+ 
++  useEffect(() => {
++    updateBrowserRoute(viewMode, screenId);
++  }, [viewMode, screenId]);
++
+   const clearScheduledCloudFlush = () => {
+     if (!cloudFlushTimerRef.current) return;
+     clearTimeout(cloudFlushTimerRef.current);
+@@ -2426,6 +2462,9 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+         lastSeen: Date.now(),
+         ...snapshot,
+         location: window.location.href,
++        visibilityState: document.visibilityState || 'unknown',
++        networkOnline: navigator.onLine,
++        heartbeatVersion: 2,
+       };
+ 
+       if (!localMode && db) {
+@@ -2442,7 +2481,17 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+ 
+     writeHeartbeat();
+     const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
+-    return () => clearInterval(heartbeatTimer);
++    window.addEventListener('focus', writeHeartbeat);
++    window.addEventListener('online', writeHeartbeat);
++    window.addEventListener('pageshow', writeHeartbeat);
++    document.addEventListener('visibilitychange', writeHeartbeat);
++    return () => {
++      clearInterval(heartbeatTimer);
++      window.removeEventListener('focus', writeHeartbeat);
++      window.removeEventListener('online', writeHeartbeat);
++      window.removeEventListener('pageshow', writeHeartbeat);
++      document.removeEventListener('visibilitychange', writeHeartbeat);
++    };
+   }, [id, db, appId, localMode, audioUnlocked, localPlaybackActive, standbyMode, currentScene?.id]);
+ 
+   useEffect(() => {
+-- 
+2.50.1 (Apple Git-155)
+

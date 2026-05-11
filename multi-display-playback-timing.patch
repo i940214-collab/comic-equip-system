@@ -1,0 +1,91 @@
+From b2371eecffb9d34cac1425f10550c4a150c01eb0 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 13:36:09 +0800
+Subject: [PATCH] Improve multi-display playback timing
+
+---
+ src/App.jsx | 37 +++++++++++++++++++++++++++++++++++--
+ 1 file changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 53ceb77..164fea3 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -113,8 +113,9 @@ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
+ const BEZEL_GAP_MAX = 400;
+-const SYNC_COMMAND_LEAD_MS = 280;
++const SYNC_COMMAND_LEAD_MS = 800;
+ const MAX_SYNC_WAIT_MS = 1200;
++const MAX_REMOTE_PLAYBACK_DRIFT_MS = 30 * 60 * 1000;
+ const CLOUD_WRITE_DEBOUNCE_MS = 140;
+ const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
+ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+@@ -149,7 +150,9 @@ const toMillis = (value) => {
+ const getSynchronizedLocalStartTime = (remoteStartTime, receivedAt = Date.now()) => {
+   const parsedRemote = Number(remoteStartTime) || receivedAt;
+   const delta = parsedRemote - receivedAt;
+-  return Math.abs(delta) <= MAX_SYNC_WAIT_MS ? receivedAt + delta : receivedAt;
++  if (delta > MAX_SYNC_WAIT_MS) return receivedAt + MAX_SYNC_WAIT_MS;
++  if (delta < -MAX_REMOTE_PLAYBACK_DRIFT_MS) return receivedAt;
++  return parsedRemote;
+ };
+ 
+ const getStringBytes = (value) => new TextEncoder().encode(value).length;
+@@ -2271,6 +2274,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+   const bgmRef = useRef(null);
+   const fxRef = useRef(null);
+   const lastFxTimestampRef = useRef(0);
++  const wakeLockRef = useRef(null);
+   const heartbeatSnapshotRef = useRef({
+     sceneId: '',
+     sceneName: '未命名場景',
+@@ -2307,8 +2311,21 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+     return map;
+   }, [assets]);
+ 
++  const requestDisplayWakeLock = async () => {
++    if (!navigator.wakeLock || document.visibilityState !== 'visible' || wakeLockRef.current) return;
++    try {
++      wakeLockRef.current = await navigator.wakeLock.request('screen');
++      wakeLockRef.current.addEventListener('release', () => {
++        wakeLockRef.current = null;
++      });
++    } catch (error) {
++      console.log("Wake lock request failed:", error);
++    }
++  };
++
+   const handleUnlockAndFullscreen = () => {
+     setAudioUnlocked(true);
++    requestDisplayWakeLock();
+     if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+       document.documentElement.requestFullscreen().catch(err => console.log(err));
+     }
+@@ -2323,6 +2340,22 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+     return () => clearInterval(timer);
+   }, []);
+ 
++  useEffect(() => {
++    if (!audioUnlocked) return undefined;
++    requestDisplayWakeLock();
++    const restoreWakeLock = () => {
++      if (document.visibilityState === 'visible') requestDisplayWakeLock();
++    };
++    document.addEventListener('visibilitychange', restoreWakeLock);
++    return () => {
++      document.removeEventListener('visibilitychange', restoreWakeLock);
++      if (wakeLockRef.current) {
++        wakeLockRef.current.release().catch(() => null);
++        wakeLockRef.current = null;
++      }
++    };
++  }, [audioUnlocked]);
++
+   useEffect(() => {
+     setLocalPlaybackActive(Boolean(isPlaying));
+     if (!isPlaying || standbyMode) return;
+-- 
+2.50.1 (Apple Git-155)
+

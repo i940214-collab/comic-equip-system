@@ -106,22 +106,25 @@ const OVERLAY_EFFECTS = [
 ];
 
 const SCREEN_IDS = ['1', '2', '3'];
-const HEARTBEAT_STALE_MS = 25000;
-const HEARTBEAT_INTERVAL_MS = 5000;
+const HEARTBEAT_STALE_MS = 60000;
+const HEARTBEAT_INTERVAL_MS = 2000;
 const PLAYBACK_COMMAND_POLL_MS = 500;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
 const BEZEL_GAP_MAX = 400;
-const SYNC_COMMAND_LEAD_MS = 280;
+const SYNC_COMMAND_LEAD_MS = 800;
 const MAX_SYNC_WAIT_MS = 1200;
+const MAX_REMOTE_PLAYBACK_DRIFT_MS = 30 * 60 * 1000;
 const CLOUD_WRITE_DEBOUNCE_MS = 140;
 const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
 const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
 const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
 const INLINE_IMAGE_MAX_DIMENSION = 1600;
 const ASSET_REF_PREFIX = 'asset://';
-const STORAGE_RESUMABLE_FALLBACK_MS = 45 * 1000;
+const STORAGE_RESUMABLE_FALLBACK_MS = 8 * 1000;
+const STORAGE_FAST_UPLOAD_MAX_BYTES = 120 * 1024 * 1024;
+const STORAGE_DIRECT_UPLOAD_TIMEOUT_MS = 4 * 60 * 1000;
 const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
 const getApplyDelayMs = (applyAt) => {
@@ -149,7 +152,9 @@ const toMillis = (value) => {
 const getSynchronizedLocalStartTime = (remoteStartTime, receivedAt = Date.now()) => {
   const parsedRemote = Number(remoteStartTime) || receivedAt;
   const delta = parsedRemote - receivedAt;
-  return Math.abs(delta) <= MAX_SYNC_WAIT_MS ? receivedAt + delta : receivedAt;
+  if (delta > MAX_SYNC_WAIT_MS) return receivedAt + MAX_SYNC_WAIT_MS;
+  if (delta < -MAX_REMOTE_PLAYBACK_DRIFT_MS) return receivedAt;
+  return parsedRemote;
 };
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
@@ -297,10 +302,123 @@ const compressImageForFirestore = async (file) => {
   return dataUrl;
 };
 
-const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
+const createStorageDownloadToken = () => (
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
+
+const getStorageDownloadUrl = (bucket, fullPath, token) => (
+  `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(fullPath)}?alt=media&token=${encodeURIComponent(token)}`
+);
+
+const uploadAssetWithFastXhr = async (storage, fileRef, file, metadata, onProgress, onStatus) => {
+  const bucket = storage?.app?.options?.storageBucket;
+  if (!bucket) throw new Error('storage-bucket-missing');
+
+  const downloadToken = createStorageDownloadToken();
+  const idToken = await auth?.currentUser?.getIdToken?.().catch(() => '');
+  const boundary = `projection_upload_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const objectMetadata = {
+    name: fileRef.fullPath,
+    contentType: metadata.contentType,
+    metadata: {
+      firebaseStorageDownloadTokens: downloadToken,
+    },
+  };
+  const uploadBody = new Blob([
+    `--${boundary}\r\n`,
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+    JSON.stringify(objectMetadata),
+    `\r\n--${boundary}\r\n`,
+    `Content-Type: ${metadata.contentType}\r\n\r\n`,
+    file,
+    `\r\n--${boundary}--`,
+  ], { type: `multipart/related; boundary=${boundary}` });
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let lastBytesTransferred = 0;
+    let lastProgressAt = performance.now();
+    let smoothedSpeedBps = 0;
+
+    xhr.open('POST', `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o?uploadType=multipart`, true);
+    xhr.timeout = STORAGE_DIRECT_UPLOAD_TIMEOUT_MS;
+    xhr.setRequestHeader('Content-Type', `multipart/related; boundary=${boundary}`);
+    if (idToken) xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+
+    onStatus?.('直接上傳到 Firebase Storage...');
+    onProgress?.({
+      progress: 3,
+      bytesTransferred: 0,
+      totalBytes: file.size || 0,
+      speedBps: 0,
+      etaSeconds: null,
+    });
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      const now = performance.now();
+      const elapsedSeconds = Math.max(0.001, (now - lastProgressAt) / 1000);
+      const bytesDelta = Math.max(0, event.loaded - lastBytesTransferred);
+      if (bytesDelta > 0 && elapsedSeconds >= 0.2) {
+        const instantSpeedBps = bytesDelta / elapsedSeconds;
+        smoothedSpeedBps = smoothedSpeedBps
+          ? (smoothedSpeedBps * 0.62) + (instantSpeedBps * 0.38)
+          : instantSpeedBps;
+        lastBytesTransferred = event.loaded;
+        lastProgressAt = now;
+      }
+      const totalBytes = file.size || event.total || uploadBody.size || 0;
+      const uploadedBytes = Math.min(file.size || event.loaded, event.loaded);
+      const progress = totalBytes > 0 ? Math.min(98, Math.max(3, (uploadedBytes / totalBytes) * 100)) : 50;
+      const remainingBytes = Math.max(0, totalBytes - uploadedBytes);
+      onProgress?.({
+        progress,
+        bytesTransferred: uploadedBytes,
+        totalBytes,
+        speedBps: smoothedSpeedBps,
+        etaSeconds: smoothedSpeedBps > 0 ? remainingBytes / smoothedSpeedBps : null,
+      });
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.({
+          progress: 100,
+          bytesTransferred: file.size || 0,
+          totalBytes: file.size || 0,
+          speedBps: smoothedSpeedBps,
+          etaSeconds: 0,
+        });
+        onStatus?.('取得素材網址...');
+        resolve(getStorageDownloadUrl(bucket, fileRef.fullPath, downloadToken));
+        return;
+      }
+      reject(new Error(`storage-direct-upload-${xhr.status}: ${xhr.responseText || 'upload failed'}`));
+    };
+
+    xhr.onerror = () => reject(new Error('storage-direct-upload-network-error'));
+    xhr.ontimeout = () => reject(new Error('storage-direct-upload-timeout'));
+    xhr.send(uploadBody);
+  });
+};
+
+const uploadAssetToStorage = async (storage, appId, file, onProgress, onStatus) => {
   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
   const metadata = { contentType: inferFileContentType(file) };
+
+  if ((file.size || 0) <= STORAGE_FAST_UPLOAD_MAX_BYTES) {
+    try {
+      return await uploadAssetWithFastXhr(storage, fileRef, file, metadata, onProgress, onStatus);
+    } catch (error) {
+      console.warn('Fast Firebase Storage upload failed; falling back to resumable upload:', error);
+      onStatus?.('直接上傳失敗，改用可續傳上傳...');
+    }
+  }
+
+  return new Promise((resolve, reject) => {
   const uploadTask = uploadBytesResumable(fileRef, file, metadata);
   let finished = false;
   let directFallbackStarted = false;
@@ -337,7 +455,7 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
         speedBps: 0,
         etaSeconds: 0,
       });
-      onStatus?.('取得影片網址...');
+      onStatus?.('取得素材網址...');
       const downloadUrl = await getDownloadURL(snapshot.ref);
       if (finished) return;
       finished = true;
@@ -392,7 +510,7 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
     async () => {
       try {
         if (finished || directFallbackStarted) return;
-        onStatus?.('取得影片網址...');
+        onStatus?.('取得素材網址...');
         resolve(await getDownloadURL(uploadTask.snapshot.ref));
       } catch (error) {
         reject(error);
@@ -402,7 +520,8 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
       }
     }
   );
-});
+  });
+};
 
 const getUploadErrorMessage = (error, fileType) => {
   const message = error?.message || '';
@@ -555,6 +674,37 @@ const getPlaybackSnapshot = (globalState, now = Date.now()) => {
 
 const getLocalStatusKey = (projectId, screenId) => `projection-display-status-${projectId}-${screenId}`;
 
+const getInitialRoute = () => {
+  if (typeof window === 'undefined') return { viewMode: 'select', screenId: null };
+
+  const params = new URLSearchParams(window.location.search);
+  const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+  const routeScreenId = params.get('screen') || params.get('display');
+  const hashScreenMatch = hash.match(/^(?:screen|display)-?([123])$/) || hash.match(/^([123])$/);
+  const screenId = SCREEN_IDS.includes(routeScreenId) ? routeScreenId : hashScreenMatch?.[1];
+
+  if (SCREEN_IDS.includes(screenId)) return { viewMode: 'display', screenId };
+  if (params.get('mode') === 'controller' || hash === 'controller') return { viewMode: 'controller', screenId: null };
+  if (params.get('mode') === 'chat' || hash === 'chat') return { viewMode: 'chat-client', screenId: null };
+
+  return { viewMode: 'select', screenId: null };
+};
+
+const updateBrowserRoute = (viewMode, screenId) => {
+  if (typeof window === 'undefined') return;
+  const nextHash = viewMode === 'display' && SCREEN_IDS.includes(screenId)
+    ? `#screen-${screenId}`
+    : viewMode === 'controller'
+      ? '#controller'
+      : viewMode === 'chat-client'
+        ? '#chat'
+        : '';
+  const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
+    window.history.replaceState(null, '', nextUrl);
+  }
+};
+
 const getSpanPreviewStyle = (screenId, bezelGap = 0) => {
   const scaledGap = Math.max(0, Math.round((Number(bezelGap) || 0) * 0.18));
   return {
@@ -668,9 +818,10 @@ function SpanModePreviewGrid({ scene }) {
 }
 
 export default function App() {
+  const initialRoute = useMemo(getInitialRoute, []);
   const [user, setUser] = useState(null);
-  const [viewMode, setViewMode] = useState('select'); 
-  const [screenId, setScreenId] = useState(null);
+  const [viewMode, setViewMode] = useState(initialRoute.viewMode);
+  const [screenId, setScreenId] = useState(initialRoute.screenId);
   const [globalState, setGlobalState] = useState(DEFAULT_STATE);
   const globalStateRef = useRef(DEFAULT_STATE);
   const [staticAssets, setStaticAssets] = useState([]);
@@ -698,6 +849,10 @@ export default function App() {
   useEffect(() => {
     globalStateRef.current = globalState;
   }, [globalState]);
+
+  useEffect(() => {
+    updateBrowserRoute(viewMode, screenId);
+  }, [viewMode, screenId]);
 
   const clearScheduledCloudFlush = () => {
     if (!cloudFlushTimerRef.current) return;
@@ -2124,7 +2279,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片支援 MP4、MOV、M4V、WebM、OGG，會透過 Firebase Storage 上傳。</p>
+              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片與影片會優先直接送 Firebase Storage；圖片只有在 Storage 無法使用時才會改用壓縮同步。</p>
               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
             </div>
@@ -2235,6 +2390,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const bgmRef = useRef(null);
   const fxRef = useRef(null);
   const lastFxTimestampRef = useRef(0);
+  const wakeLockRef = useRef(null);
   const heartbeatSnapshotRef = useRef({
     sceneId: '',
     sceneName: '未命名場景',
@@ -2271,8 +2427,21 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     return map;
   }, [assets]);
 
+  const requestDisplayWakeLock = async () => {
+    if (!navigator.wakeLock || document.visibilityState !== 'visible' || wakeLockRef.current) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen');
+      wakeLockRef.current.addEventListener('release', () => {
+        wakeLockRef.current = null;
+      });
+    } catch (error) {
+      console.log("Wake lock request failed:", error);
+    }
+  };
+
   const handleUnlockAndFullscreen = () => {
     setAudioUnlocked(true);
+    requestDisplayWakeLock();
     if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(err => console.log(err));
     }
@@ -2286,6 +2455,22 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     const timer = setInterval(() => setNow(Date.now()), 333);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!audioUnlocked) return undefined;
+    requestDisplayWakeLock();
+    const restoreWakeLock = () => {
+      if (document.visibilityState === 'visible') requestDisplayWakeLock();
+    };
+    document.addEventListener('visibilitychange', restoreWakeLock);
+    return () => {
+      document.removeEventListener('visibilitychange', restoreWakeLock);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => null);
+        wakeLockRef.current = null;
+      }
+    };
+  }, [audioUnlocked]);
 
   useEffect(() => {
     setLocalPlaybackActive(Boolean(isPlaying));
@@ -2426,6 +2611,9 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
         lastSeen: Date.now(),
         ...snapshot,
         location: window.location.href,
+        visibilityState: document.visibilityState || 'unknown',
+        networkOnline: navigator.onLine,
+        heartbeatVersion: 2,
       };
 
       if (!localMode && db) {
@@ -2442,7 +2630,17 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
 
     writeHeartbeat();
     const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
-    return () => clearInterval(heartbeatTimer);
+    window.addEventListener('focus', writeHeartbeat);
+    window.addEventListener('online', writeHeartbeat);
+    window.addEventListener('pageshow', writeHeartbeat);
+    document.addEventListener('visibilitychange', writeHeartbeat);
+    return () => {
+      clearInterval(heartbeatTimer);
+      window.removeEventListener('focus', writeHeartbeat);
+      window.removeEventListener('online', writeHeartbeat);
+      window.removeEventListener('pageshow', writeHeartbeat);
+      document.removeEventListener('visibilitychange', writeHeartbeat);
+    };
   }, [id, db, appId, localMode, audioUnlocked, localPlaybackActive, standbyMode, currentScene?.id]);
 
   useEffect(() => {
