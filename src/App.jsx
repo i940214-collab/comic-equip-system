@@ -2993,6 +2993,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     playbackCommand,
   } = globalState;
   const cameraVideoRef = useRef(null);
+  const spanVideoRef = useRef(null);
+  const screenVideoRef = useRef(null);
   const bgmRef = useRef(null);
   const fxRef = useRef(null);
   const lastFxTimestampRef = useRef(0);
@@ -3368,6 +3370,26 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   }, [effectiveBgm, audioUnlocked]);
 
   useEffect(() => {
+    if (!audioUnlocked) return;
+    const targets = [spanVideoRef.current, screenVideoRef.current].filter(Boolean);
+    targets.forEach((videoEl) => {
+      videoEl.muted = false;
+      videoEl.volume = 1;
+      const playPromise = videoEl.play?.();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((error) => console.log('Video play retry failed:', error));
+      }
+    });
+  }, [
+    audioUnlocked,
+    currentScene?.id,
+    currentScene?.isSpanMode,
+    currentScene?.spanType,
+    currentScene?.screens?.[id]?.type,
+    id,
+  ]);
+
+  useEffect(() => {
     const fxAt = Number(fxTrigger?.timestamp) || 0;
     if (!fxRef.current || !audioUnlocked || fxAt <= 0 || fxAt === lastFxTimestampRef.current) return;
 
@@ -3453,7 +3475,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
             )}
             {currentScene.spanType === 'video' && resolvedSpanContent && (
                <div style={{ position: 'absolute', width: spanTotalWidth, height: '100vh', left: spanLeftOffset }}>
-                 <video src={resolvedSpanContent} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+                 <video ref={spanVideoRef} src={resolvedSpanContent} autoPlay muted={!audioUnlocked} loop playsInline className="w-full h-full object-cover" />
                </div>
             )}
             {currentScene.spanType === 'text' && resolvedSpanContent && (
@@ -3468,7 +3490,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
           <>
             {screenData.type === 'color' && <div className="w-full h-full transition-colors duration-1000" style={{ backgroundColor: screenData.content || '#000' }} />}
             {screenData.type === 'image' && resolvedScreenContent && <img src={resolvedScreenContent} className="w-full h-full object-cover" />}
-            {screenData.type === 'video' && resolvedScreenContent && <video src={resolvedScreenContent} autoPlay muted loop playsInline className="w-full h-full object-cover" />}
+            {screenData.type === 'video' && resolvedScreenContent && <video ref={screenVideoRef} src={resolvedScreenContent} autoPlay muted={!audioUnlocked} loop playsInline className="w-full h-full object-cover" />}
             {screenData.type === 'text' && <div className="text-[10vw] font-semibold text-white text-center leading-tight tracking-tight drop-shadow-2xl px-12">{resolvedScreenContent}</div>}
             {screenData.type === 'camera' && <video ref={cameraVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />}
             {screenData.type === 'qrcode' && (
