@@ -2313,9 +2313,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
         }
 
         let assetUrl = '';
-        let assetSource = 'firebase-storage';
+        let assetSource = fileType === 'image' ? 'firestore-inline' : 'firebase-storage';
 
-        if (storage) {
+        if (fileType === 'image') {
+          patchUploadItem(itemId, { progress: 35, message: '圖片處理中...' });
+        } else if (storage) {
           try {
             assetUrl = await uploadAssetToStorage(
               storage,
@@ -2331,11 +2333,9 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
             );
           } catch (error) {
             console.warn('Firebase Storage upload failed:', error);
-            if (fileType !== 'image') throw error;
-            assetSource = 'firestore-inline';
-            patchUploadItem(itemId, { progress: 35, message: '改用圖片壓縮同步...' });
+            throw error;
           }
-        } else if (fileType !== 'image') {
+        } else {
           throw new Error('Firebase Storage 尚未啟用，影片無法直接上傳。請改用「貼上網址」。');
         }
 
@@ -2492,7 +2492,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片與影片會優先直接送 Firebase Storage；圖片只有在 Storage 無法使用時才會改用壓縮同步。</p>
+              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會直接壓縮同步到雲端，影片才會透過 Firebase Storage 上傳。</p>
               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
             </div>
