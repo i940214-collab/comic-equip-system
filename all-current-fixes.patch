@@ -1,7 +1,7 @@
 From 13e5a7d4786a558a36a6872d17027b5239e45fc5 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 20:32:16 +0800
-Subject: [PATCH 01/16] Improve MOV upload timeout
+Subject: [PATCH 01/17] Improve MOV upload timeout
 
 ---
  .github/workflows/deploy-pages.yml |  1 -
@@ -67,7 +67,7 @@ index e17cc91..85e805a 100644
 From c745b3ddb8e41adef4384a9ab43d84be45e17a0e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 20:49:45 +0800
-Subject: [PATCH 02/16] Add Firestore polling fallback
+Subject: [PATCH 02/17] Add Firestore polling fallback
 
 ---
  src/App.jsx | 112 +++++++++++++++++++++++++++++++++++++++++-----------
@@ -266,7 +266,7 @@ index 85e805a..dc5e351 100644
 From 189abab74ee9e2be172d2aebafa525a23064c1ea Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 22:21:13 +0800
-Subject: [PATCH 03/16] Fix video uploads
+Subject: [PATCH 03/17] Fix video uploads
 
 ---
  src/App.jsx | 107 ++++++++++++++++++++++++++++++++++++++++++----------
@@ -459,7 +459,7 @@ index dc5e351..349dce6 100644
 From 27f9ddcc22003e610706b3a1d03e482fcbe3c1b1 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Sun, 10 May 2026 23:33:38 +0800
-Subject: [PATCH 04/16] Show upload speed and ETA
+Subject: [PATCH 04/17] Show upload speed and ETA
 
 ---
  src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++--
@@ -564,7 +564,7 @@ index 349dce6..cb1ccad 100644
 From 4bddd44c8234bc4b977a0689d1399e571071d743 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 00:01:29 +0800
-Subject: [PATCH 05/16] Fallback to direct video uploads
+Subject: [PATCH 05/17] Fallback to direct video uploads
 
 ---
  src/App.jsx | 76 +++++++++++++++++++++++++++++++++++++----------------
@@ -708,7 +708,7 @@ index cb1ccad..43c0762 100644
 From 40cc38b70f0f7bef096237db7c23411539e91e59 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:22:26 +0800
-Subject: [PATCH 06/16] Stabilize display heartbeat and playback sync
+Subject: [PATCH 06/17] Stabilize display heartbeat and playback sync
 
 ---
  src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++----
@@ -840,7 +840,7 @@ index 43c0762..4fda860 100644
 From e054431be6c9d062ea766a4f37e3617f9ef137f6 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:44:13 +0800
-Subject: [PATCH 07/16] Add playback command channel
+Subject: [PATCH 07/17] Add playback command channel
 
 ---
  src/App.jsx | 99 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1014,7 +1014,7 @@ index 4fda860..d95400c 100644
 From c1f965580c86c76a2c8bdf6b88b823edbed9202b Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:53:33 +0800
-Subject: [PATCH 08/16] Stabilize display connection heartbeat
+Subject: [PATCH 08/17] Stabilize display connection heartbeat
 
 ---
  src/App.jsx | 59 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1133,7 +1133,7 @@ index d95400c..53ceb77 100644
 From b2371eecffb9d34cac1425f10550c4a150c01eb0 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:36:09 +0800
-Subject: [PATCH 09/16] Improve multi-display playback timing
+Subject: [PATCH 09/17] Improve multi-display playback timing
 
 ---
  src/App.jsx | 37 +++++++++++++++++++++++++++++++++++--
@@ -1225,7 +1225,7 @@ index 53ceb77..164fea3 100644
 From 98b35cbb3995e568b1e7deb9dd5fa9dec843046e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:53:41 +0800
-Subject: [PATCH 10/16] Speed up asset uploads
+Subject: [PATCH 10/17] Speed up asset uploads
 
 ---
  src/App.jsx | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
@@ -1415,7 +1415,7 @@ index 164fea3..dc24519 100644
 From 183589f290d8b400ef2ed4183415b7ff0e85d641 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:10:09 +0800
-Subject: [PATCH 11/16] Treat Firestore internal assertion as transient
+Subject: [PATCH 11/17] Treat Firestore internal assertion as transient
 
 ---
  src/App.jsx | 22 +++++++++++++++++++---
@@ -1482,7 +1482,7 @@ index dc24519..3759bd7 100644
 From b35738f04602e0921bddbc0a211dbf00ab989d5f Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:29:53 +0800
-Subject: [PATCH 12/16] Fallback asset metadata writes to Firestore REST
+Subject: [PATCH 12/17] Fallback asset metadata writes to Firestore REST
 
 ---
  src/App.jsx | 62 +++++++++++++++++++++++++++++++++++++++++++++++++++--
@@ -1584,7 +1584,7 @@ index 3759bd7..b566697 100644
 From f99def477a5712855f179fa3bb977eab2d6a55e3 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:39:29 +0800
-Subject: [PATCH 13/16] Add REST fallback for display sync
+Subject: [PATCH 13/17] Add REST fallback for display sync
 
 ---
  src/App.jsx | 187 +++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1904,7 +1904,7 @@ index b566697..8fd0731 100644
 From 4c3879e6c49bba90b7f355f7242745e942861d04 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:52:09 +0800
-Subject: [PATCH 14/16] Bypass Storage for image uploads
+Subject: [PATCH 14/17] Bypass Storage for image uploads
 
 ---
  src/App.jsx | 14 +++++++-------
@@ -1958,7 +1958,7 @@ index 8fd0731..8023c1a 100644
 From b018ba0e47475ad7cb27048e9e2fe38726c660bb Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 15:56:15 +0800
-Subject: [PATCH 15/16] Improve REST backup display heartbeats
+Subject: [PATCH 15/17] Improve REST backup display heartbeats
 
 ---
  src/App.jsx | 67 ++++++++++++++++++++++++++++++++++++++++++++++-------
@@ -2100,7 +2100,7 @@ index 8023c1a..d80ad5f 100644
 From 9f3c7b0e742c4c81106aa0c01526efdb4f55477a Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 16:29:56 +0800
-Subject: [PATCH 16/16] Use REST backup for scene updates
+Subject: [PATCH 16/17] Use REST backup for scene updates
 
 ---
  src/App.jsx | 55 +++++++++++++++++++++++++++++++++++++++++++++--------
@@ -2193,6 +2193,124 @@ index d80ad5f..3e5a4ba 100644
      setSelectedSceneId(newScene.id);
    };
    const deleteScene = (id) => {
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 7118eb46d8bbfec053b30d20e534b2832c2aedcc Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 17:12:46 +0800
+Subject: [PATCH 17/17] Prevent stale cloud state from hiding new scenes
+
+---
+ src/App.jsx | 47 +++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 3e5a4ba..e07473b 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -114,6 +114,7 @@ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
+ const CLOUD_WRITE_REST_FALLBACK_MS = 900;
+ const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
++const LOCAL_WRITE_PROTECT_MS = 8000;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 800;
+ const MAX_SYNC_WAIT_MS = 1200;
+@@ -158,6 +159,9 @@ const getCloudSyncState = (syncInfo = {}) => {
+   if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
+   return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
+ };
++const getTimelineSignature = (timeline = []) => timeline
++  .map((scene) => `${scene?.id || ''}:${scene?.name || ''}:${scene?.duration || ''}`)
++  .join('|');
+ const toMillis = (value) => {
+   if (!value) return 0;
+   if (typeof value === 'number') return value;
+@@ -993,6 +997,7 @@ export default function App() {
+   const pendingCloudUpdatesRef = useRef(null);
+   const cloudFlushTimerRef = useRef(null);
+   const cloudWriteChainRef = useRef(Promise.resolve());
++  const localWriteGuardRef = useRef({ until: 0, state: null });
+   const assetIdByUrlRef = useRef({});
+ 
+   useEffect(() => {
+@@ -1055,6 +1060,38 @@ export default function App() {
+     return cloudWriteChainRef.current;
+   };
+ 
++  const keepRecentLocalStateIfNewer = (incomingState, source = 'realtime') => {
++    const guard = localWriteGuardRef.current;
++    if (!guard?.state || Date.now() > guard.until) return false;
++
++    const localState = guard.state;
++    const localUpdatedAt = Number(localState.updatedAt) || 0;
++    const incomingUpdatedAt = Number(incomingState.updatedAt) || 0;
++    if (localUpdatedAt && incomingUpdatedAt && incomingUpdatedAt >= localUpdatedAt) return false;
++
++    const localTimeline = Array.isArray(localState.timeline) ? localState.timeline : [];
++    const incomingTimeline = Array.isArray(incomingState.timeline) ? incomingState.timeline : [];
++    const timelineLooksOlder = localTimeline.length > incomingTimeline.length
++      || (localTimeline.length === incomingTimeline.length
++        && getTimelineSignature(localTimeline) !== getTimelineSignature(incomingTimeline));
++    const stateLooksOlder = localUpdatedAt && (!incomingUpdatedAt || incomingUpdatedAt < localUpdatedAt);
++
++    if (!timelineLooksOlder && !stateLooksOlder) return false;
++
++    globalStateRef.current = localState;
++    setGlobalState(localState);
++    setLoading(false);
++    setIsDbMissing(false);
++    setSyncInfo(prev => ({
++      ...prev,
++      mode: 'cloud',
++      data: source === 'rest' ? 'rest-backup' : source === 'polling' ? 'polling-backup' : 'connected',
++      reason: '',
++    }));
++    enqueueCloudWrite({ ...localState, updatedAt: localUpdatedAt || Date.now() }, true);
++    return true;
++  };
++
+   const flushPendingCloudUpdates = () => {
+     const payload = pendingCloudUpdatesRef.current;
+     pendingCloudUpdatesRef.current = null;
+@@ -1207,6 +1244,7 @@ export default function App() {
+       clearTimeout(dataWarnTimeout);
+       if (data) {
+         const nextState = normalizeGlobalState(data);
++        if (keepRecentLocalStateIfNewer(nextState, source)) return;
+         globalStateRef.current = nextState;
+         setGlobalState(nextState);
+       } else {
+@@ -1431,6 +1469,10 @@ export default function App() {
+       : updatesOrFactory;
+     if (!updates || typeof updates !== 'object') return;
+     let nextState = { ...baseState, ...updates };
++    const writeTimestamp = Date.now();
++    if (!skipCloud) {
++      nextState = { ...nextState, updatedAt: writeTimestamp };
++    }
+     let timelineWasRewritten = false;
+     if (Array.isArray(nextState.timeline)) {
+       const rewrittenTimeline = rewriteTimelineAssetRefs(nextState.timeline, assetIdByUrlRef.current);
+@@ -1440,13 +1482,14 @@ export default function App() {
+       }
+     }
+     const cloudUpdates = timelineWasRewritten
+-      ? { ...updates, timeline: nextState.timeline }
+-      : updates;
++      ? { ...updates, timeline: nextState.timeline, updatedAt: nextState.updatedAt }
++      : { ...updates, updatedAt: nextState.updatedAt };
+     globalStateRef.current = nextState;
+     setGlobalState(nextState);
+     if (skipCloud) {
+       return;
+     }
++    localWriteGuardRef.current = { until: writeTimestamp + LOCAL_WRITE_PROTECT_MS, state: nextState };
+     if (localMode) {
+       return;
+     }
 -- 
 2.50.1 (Apple Git-155)
 
