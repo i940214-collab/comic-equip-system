@@ -6,7 +6,6 @@ import {
   getDoc,
   setDoc, 
   serverTimestamp,
-  enableNetwork,
   onSnapshot,
   collection,
   getDocs,
@@ -175,6 +174,16 @@ const getCloudSyncState = (syncInfo = {}, options = {}) => {
 const getTimelineSignature = (timeline = []) => timeline
   .map((scene) => `${scene?.id || ''}:${scene?.name || ''}:${scene?.duration || ''}`)
   .join('|');
+const hasMeaningfulTimelineState = (state) => {
+  const timeline = Array.isArray(state?.timeline) ? state.timeline : [];
+  if (timeline.length > 1) return true;
+  const onlyScene = timeline[0];
+  if (!onlyScene) return false;
+  if (onlyScene.id && onlyScene.id !== DEFAULT_SCENE.id) return true;
+  if (onlyScene.name && onlyScene.name !== DEFAULT_SCENE.name) return true;
+  if ((onlyScene.duration || 0) !== DEFAULT_SCENE.duration) return true;
+  return Boolean(state?.updatedAt);
+};
 const toMillis = (value) => {
   if (!value) return 0;
   if (typeof value === 'number') return value;
@@ -1290,6 +1299,18 @@ export default function App() {
         globalStateRef.current = nextState;
         setGlobalState(nextState);
       } else {
+        // Avoid wiping an existing timeline when a transient empty read appears.
+        if (hasMeaningfulTimelineState(globalStateRef.current)) {
+          setLoading(false);
+          setIsDbMissing(false);
+          setSyncInfo(prev => ({
+            ...prev,
+            mode: 'cloud-pending',
+            data: source === 'rest' ? 'rest-backup' : source === 'polling' ? 'polling-backup' : 'retrying-transient',
+            reason: 'Cloud state temporarily empty, keeping latest local snapshot.',
+          }));
+          return;
+        }
         setDoc(stateDoc, DEFAULT_STATE).catch((error) => {
           console.error("Initial setDoc failed:", error);
           if (isFirestoreOfflineError(error)) {
@@ -1362,15 +1383,10 @@ export default function App() {
       restFallbackTimer = setTimeout(() => {
         startRestFallback().catch(restError => console.warn("Firestore REST state timed fallback failed:", restError));
       }, SDK_READ_REST_FALLBACK_MS);
-      if (source === 'polling') {
-        startRestFallback().catch(restError => console.warn("Firestore REST state primary check failed:", restError));
-      }
       try {
-        await enableNetwork(db).catch(() => null);
         const docSnap = await getDoc(stateDoc);
         clearTimeout(restFallbackTimer);
         applyStateSnap(docSnap, source);
-        startRestFallback().catch(restError => console.warn("Firestore REST state check failed:", restError));
       } catch (err) {
         clearTimeout(restFallbackTimer);
         if (isFirestoreOfflineError(err) || isFirestoreTransientError(err)) {
@@ -1425,7 +1441,6 @@ export default function App() {
       try {
         applyAssetsSnap(await getDocs(assetsCol));
         clearTimeout(restFallbackTimer);
-        startRestFallback().catch(restError => console.warn("Assets REST check failed:", restError));
       } catch (err) {
         clearTimeout(restFallbackTimer);
         console.log("Assets polling error:", err);
@@ -1504,7 +1519,6 @@ export default function App() {
         try {
           applyStatusSnap(await getDocs(statusCol));
           clearTimeout(restFallbackTimer);
-          startRestFallback().catch(restError => console.warn("Display status REST check failed:", restError));
         } catch (err) {
           clearTimeout(restFallbackTimer);
           console.log("Display status polling error:", err);
@@ -2977,7 +2991,6 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       try {
         applyDoc(await getDoc(playbackCommandDoc));
         clearTimeout(restFallbackTimer);
-        startRestFallback(false).catch(restError => console.warn("Playback command REST check failed:", restError));
       } catch (error) {
         clearTimeout(restFallbackTimer);
         console.warn("Playback command polling failed:", error);
