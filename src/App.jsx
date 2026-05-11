@@ -198,6 +198,24 @@ const getSynchronizedLocalStartTime = (remoteStartTime, receivedAt = Date.now())
   if (delta < -MAX_REMOTE_PLAYBACK_DRIFT_MS) return receivedAt;
   return parsedRemote;
 };
+const getPlaybackStartTimeFromCommand = (commandData = {}, receivedAt = Date.now()) => {
+  const remoteStartTime = Number(commandData?.startTime) || 0;
+  const issuedAt = Number(commandData?.issuedAt) || 0;
+  const explicitLeadMs = Number(commandData?.leadMs);
+
+  if (remoteStartTime <= 0) return receivedAt;
+
+  // Prefer a relative lead-time schedule when possible.
+  // This avoids cross-device clock skew (one device clock being ahead/behind).
+  let leadMs = Number.isFinite(explicitLeadMs) ? explicitLeadMs : (remoteStartTime - issuedAt);
+  if (!Number.isFinite(leadMs)) leadMs = 0;
+  if (leadMs > 0) {
+    const clampedLead = Math.max(0, Math.min(leadMs, MAX_SYNC_WAIT_MS));
+    return receivedAt + clampedLead;
+  }
+
+  return getSynchronizedLocalStartTime(remoteStartTime, receivedAt);
+};
 
 const getStringBytes = (value) => new TextEncoder().encode(value).length;
 const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
@@ -1913,6 +1931,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
       command,
       commandId,
       startTime: command === 'play' ? startAt : 0,
+      leadMs: command === 'play' ? SYNC_COMMAND_LEAD_MS : 0,
       issuedAt,
     };
     setDoc(playbackCommandDoc, {
@@ -1945,6 +1964,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
         command: nextPlaying ? 'play' : 'pause',
         commandId,
         startTime: nextPlaying ? nextStartTime : 0,
+        leadMs: nextPlaying ? SYNC_COMMAND_LEAD_MS : 0,
         issuedAt: Date.now(),
       }
     }, { immediate: true });
@@ -3014,8 +3034,22 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   useEffect(() => {
     setLocalPlaybackActive(Boolean(isPlaying));
     if (!isPlaying || standbyMode) return;
-    setLocalPlaybackStartTime(getSynchronizedLocalStartTime(startTime, Date.now()));
-  }, [isPlaying, standbyMode, startTime]);
+    const receivedAt = Date.now();
+    if (playbackCommand?.command === 'play') {
+      setLocalPlaybackStartTime(getPlaybackStartTimeFromCommand(playbackCommand, receivedAt));
+      return;
+    }
+    setLocalPlaybackStartTime(getSynchronizedLocalStartTime(startTime, receivedAt));
+  }, [
+    isPlaying,
+    standbyMode,
+    startTime,
+    playbackCommand?.command,
+    playbackCommand?.commandId,
+    playbackCommand?.startTime,
+    playbackCommand?.issuedAt,
+    playbackCommand?.leadMs,
+  ]);
 
   const applyPlaybackCommand = (commandData = {}) => {
     if (!commandData || commandData.type !== 'playback') return;
@@ -3024,8 +3058,9 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     lastPlaybackCommandIdRef.current = commandId;
 
     if (commandData.command === 'play') {
+      const receivedAt = Date.now();
       setLocalPlaybackActive(true);
-      setLocalPlaybackStartTime(getSynchronizedLocalStartTime(commandData.startTime, Date.now()));
+      setLocalPlaybackStartTime(getPlaybackStartTimeFromCommand(commandData, receivedAt));
       return;
     }
 
