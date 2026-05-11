@@ -10,8 +10,7 @@ import {
   onSnapshot,
   collection,
   getDocs,
-  deleteDoc,
-  addDoc
+  deleteDoc
 } from 'firebase/firestore';
 import { 
   getStorage, 
@@ -114,6 +113,7 @@ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
 const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
+const ASSET_WRITE_REST_FALLBACK_MS = 900;
 const LOCAL_WRITE_PROTECT_MS = 8000;
 const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 800;
@@ -626,6 +626,8 @@ const listFirestoreRestCollection = async (projectId, collectionPath) => {
   return (payload?.documents || []).map(fromFirestoreRestDocument);
 };
 
+const createAssetDocumentId = () => `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 const setFirestoreRestDocument = async (projectId, documentPath, data) => {
   const fields = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, toFirestoreRestValue(value)]));
   const updateMask = Object.keys(data)
@@ -640,37 +642,58 @@ const setFirestoreRestDocument = async (projectId, documentPath, data) => {
 };
 
 const addAssetDocumentViaRest = async (projectId, assetData) => {
-  const idToken = await getFirestoreRestToken();
-
-  const fields = Object.fromEntries(Object.entries(assetData).map(([key, value]) => [key, toFirestoreRestValue(value)]));
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/artifacts/${encodeURIComponent(projectId)}/public/data/assets`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ fields }),
-    }
+  const documentId = assetData.id || createAssetDocumentId();
+  await setFirestoreRestDocument(
+    projectId,
+    `artifacts/${projectId}/public/data/assets/${documentId}`,
+    { ...assetData, id: documentId }
   );
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`firestore-rest-${response.status}: ${detail || 'asset write failed'}`);
-  }
-
-  return response.json();
+  return { id: documentId, ...assetData };
 };
 
 const addAssetDocument = async (db, appId, assetData) => {
-  try {
-    return await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assets'), assetData);
-  } catch (error) {
-    if (!isFirestoreOfflineError(error)) throw error;
-    console.warn('Firestore SDK asset write failed; using REST fallback:', error);
-    return addAssetDocumentViaRest(appId, assetData);
-  }
+  const documentId = assetData.id || createAssetDocumentId();
+  const payload = { ...assetData, id: documentId };
+  if (!db) return addAssetDocumentViaRest(appId, payload);
+  const assetDoc = doc(db, 'artifacts', appId, 'public', 'data', 'assets', documentId);
+  const writeAssetViaRest = (error, force = false) => {
+    if (error) console.warn('Firestore SDK asset write delayed or failed; using REST fallback:', error);
+    if (!force && !isFirestoreOfflineError(error)) return Promise.reject(error);
+    return addAssetDocumentViaRest(appId, payload);
+  };
+
+  let sdkSettled = false;
+  let restStarted = false;
+  let restPromise = null;
+  const startRestBackup = (error, force = false) => {
+    if (restStarted) return restPromise || Promise.resolve({ id: documentId, ...payload });
+    restStarted = true;
+    restPromise = writeAssetViaRest(error, force);
+    return restPromise;
+  };
+
+  const sdkWrite = setDoc(assetDoc, payload, { merge: true })
+    .then(() => {
+      sdkSettled = true;
+      return { id: documentId, ...payload };
+    })
+    .catch((error) => {
+      sdkSettled = true;
+      return startRestBackup(error);
+    });
+
+  const timeoutBackup = new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      if (sdkSettled) {
+        resolve({ id: documentId, ...payload });
+        return;
+      }
+      startRestBackup(new Error('Firestore asset write delayed; using REST backup'), true).then(resolve, reject);
+    }, ASSET_WRITE_REST_FALLBACK_MS);
+    sdkWrite.finally(() => window.clearTimeout(timer));
+  });
+
+  return Promise.race([sdkWrite, timeoutBackup]);
 };
 
 const getUploadErrorMessage = (error, fileType) => {
@@ -2306,6 +2329,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
     setUploadItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
+  const upsertAssetLocally = (asset) => {
+    if (!asset?.id) return;
+    setAssets(prev => [asset, ...prev.filter(existing => existing.id !== asset.id)]);
+  };
+
   const formatFileSize = (bytes = 0) => {
     if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
     if (bytes < 1024) return `${bytes} B`;
@@ -2360,7 +2388,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
       return;
     }
     try {
-      await runWithTimeout(
+      const savedAsset = await runWithTimeout(
         addAssetDocument(db, appId, {
           name: newName,
           url: newUrl,
@@ -2370,6 +2398,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
         12000,
         '雲端連線逾時，請稍後再試。'
       );
+      upsertAssetLocally(savedAsset);
       setNewUrl('');
       setNewName('');
       setUploadSuccess('網址素材已加入素材庫。');
@@ -2466,7 +2495,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           patchUploadItem(itemId, { progress: 86, message: '寫入雲端中...' });
         }
 
-        await runWithTimeout(
+        const savedAsset = await runWithTimeout(
           addAssetDocument(db, appId, {
             name: assetName,
             url: assetUrl,
@@ -2479,6 +2508,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           12000,
           '素材寫入逾時，請稍後再試。'
         );
+        upsertAssetLocally(savedAsset);
 
         patchUploadItem(itemId, { status: 'done', progress: 100, message: '完成' });
         successCount += 1;
