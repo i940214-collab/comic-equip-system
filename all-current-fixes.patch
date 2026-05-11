@@ -1,7 +1,846 @@
+From 13e5a7d4786a558a36a6872d17027b5239e45fc5 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 10 May 2026 20:32:16 +0800
+Subject: [PATCH 01/16] Improve MOV upload timeout
+
+---
+ .github/workflows/deploy-pages.yml |  1 -
+ src/App.jsx                        | 11 ++++++++++-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/.github/workflows/deploy-pages.yml b/.github/workflows/deploy-pages.yml
+index ae027c6..28185cb 100644
+--- a/.github/workflows/deploy-pages.yml
++++ b/.github/workflows/deploy-pages.yml
+@@ -1,4 +1,3 @@
+-
+ name: Deploy GitHub Pages
+ 
+ on:
+diff --git a/src/App.jsx b/src/App.jsx
+index e17cc91..85e805a 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -114,6 +114,8 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+ const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+ const INLINE_IMAGE_MAX_DIMENSION = 1600;
+ const ASSET_REF_PREFIX = 'asset://';
++const MIN_UPLOAD_TIMEOUT_MS = 45000;
++const MAX_UPLOAD_TIMEOUT_MS = 8 * 60 * 1000;
+ const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+ const getApplyDelayMs = (applyAt) => {
+   const targetTs = Number(applyAt) || 0;
+@@ -129,6 +131,12 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+ 
+ const getStringBytes = (value) => new TextEncoder().encode(value).length;
+ const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
++const getUploadTimeoutMs = (file) => {
++  const sizeBytes = Number(file?.size) || 0;
++  // Estimate by file size: roughly 4 seconds per MB, with sane floor/ceiling.
++  const estimated = Math.round((sizeBytes / (1024 * 1024)) * 4000);
++  return Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.min(MAX_UPLOAD_TIMEOUT_MS, estimated));
++};
+ const toAssetRef = (id) => `${ASSET_REF_PREFIX}${id}`;
+ const parseAssetRef = (value = '') => {
+   if (typeof value !== 'string' || !value.startsWith(ASSET_REF_PREFIX)) return null;
+@@ -1661,6 +1669,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+       const itemId = getFileId(selectedFile, index);
+       const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
+       const assetName = total === 1 && newName ? newName : selectedFile.name;
++      const uploadTimeoutMs = getUploadTimeoutMs(selectedFile);
+ 
+       try {
+         patchUploadItem(itemId, { status: 'uploading', progress: 4, message: '準備上傳...' });
+@@ -1680,7 +1689,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+           try {
+             assetUrl = await runWithTimeout(
+               uploadAssetToStorage(storage, appId, selectedFile, (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: '上傳中...' })),
+-              18000,
++              uploadTimeoutMs,
+               '檔案上傳逾時，請檢查網路後重試。'
+             );
+           } catch (error) {
+-- 
+2.50.1 (Apple Git-155)
+
+
+From c745b3ddb8e41adef4384a9ab43d84be45e17a0e Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 10 May 2026 20:49:45 +0800
+Subject: [PATCH 02/16] Add Firestore polling fallback
+
+---
+ src/App.jsx | 112 +++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 88 insertions(+), 24 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 85e805a..dc5e351 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -3,9 +3,11 @@ import { initializeApp } from 'firebase/app';
+ import { 
+   initializeFirestore, 
+   doc, 
++  getDoc,
+   setDoc, 
+   onSnapshot,
+   collection,
++  getDocs,
+   deleteDoc,
+   addDoc
+ } from 'firebase/firestore';
+@@ -105,6 +107,7 @@ const HEARTBEAT_STALE_MS = 25000;
+ const HEARTBEAT_INTERVAL_MS = 5000;
+ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
++const FIRESTORE_POLL_INTERVAL_MS = 2500;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 280;
+ const MAX_SYNC_WAIT_MS = 1200;
+@@ -322,6 +325,14 @@ const DEFAULT_STATE = {
+   stats: { chatCount: 0, likes: 0 }
+ };
+ 
++const normalizeGlobalState = (data = {}) => ({
++  ...DEFAULT_STATE,
++  ...data,
++  timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
++  bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
++  stats: data.stats || { chatCount: 0, likes: 0 },
++});
++
+ const inferAssetType = (url = '') => {
+   const cleanUrl = url.split('?')[0].toLowerCase();
+   if (/\.(mp4|webm|mov|m4v|ogg)$/.test(cleanUrl)) return 'video';
+@@ -716,25 +727,15 @@ export default function App() {
+     // 路徑: artifacts -> appId -> public -> data -> appConfig -> globalState
+     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
+     let dataSettled = false;
+-    const dataWarnTimeout = setTimeout(() => {
+-      if (dataSettled) return;
+-      console.warn("Firestore first snapshot is delayed; keep waiting for cloud sync.");
+-      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', data: 'timeout-waiting', reason: 'Firestore delayed, still retrying...' }));
+-      setLoading(false);
+-    }, FIRESTORE_WARN_TIMEOUT_MS);
+-    
+-    const unsubState = onSnapshot(stateDoc, (docSnap) => {
++    let cancelled = false;
++    let dataWarnTimeout = null;
++
++    const applyStateSnap = (docSnap, source = 'realtime') => {
++      if (cancelled) return;
+       dataSettled = true;
+       clearTimeout(dataWarnTimeout);
+       if (docSnap.exists()) {
+-        const data = docSnap.data();
+-        const nextState = {
+-          ...DEFAULT_STATE,
+-          ...data,
+-          timeline: Array.isArray(data.timeline) && data.timeline.length > 0 ? data.timeline : [DEFAULT_SCENE],
+-          bulletChats: { active: false, messages: [], applyAt: 0, ...(data.bulletChats || {}) },
+-          stats: data.stats || { chatCount: 0, likes: 0 }
+-        };
++        const nextState = normalizeGlobalState(docSnap.data());
+         globalStateRef.current = nextState;
+         setGlobalState(nextState);
+       } else {
+@@ -744,8 +745,16 @@ export default function App() {
+       }
+       setLoading(false);
+       setIsDbMissing(false);
+-      setSyncInfo(prev => ({ ...prev, mode: 'cloud', data: 'connected', reason: '' }));
+-    }, (err) => {
++      setSyncInfo(prev => ({
++        ...prev,
++        mode: 'cloud',
++        data: source === 'polling' ? 'polling-backup' : 'connected',
++        reason: '',
++      }));
++    };
++
++    const handleFirestoreError = (err) => {
++      if (cancelled) return;
+       dataSettled = true;
+       clearTimeout(dataWarnTimeout);
+       console.error("Firestore error:", err);
+@@ -758,16 +767,54 @@ export default function App() {
+       }
+       setSyncInfo(prev => ({ ...prev, mode: 'error', data: err.code || 'error', reason: err.message }));
+       setLoading(false);
+-    });
++    };
++
++    const fetchStateOnce = async (source = 'polling') => {
++      try {
++        const docSnap = await getDoc(stateDoc);
++        applyStateSnap(docSnap, source);
++      } catch (err) {
++        handleFirestoreError(err);
++      }
++    };
++
++    dataWarnTimeout = setTimeout(() => {
++      if (dataSettled) return;
++      console.warn("Firestore first snapshot is delayed; using one-shot read fallback.");
++      setSyncInfo(prev => ({ ...prev, mode: 'cloud-pending', data: 'timeout-waiting', reason: 'Firestore delayed, still retrying...' }));
++      setLoading(false);
++      fetchStateOnce('polling');
++    }, FIRESTORE_WARN_TIMEOUT_MS);
++    
++    const unsubState = onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError);
+ 
+     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
+-    const unsubAssets = onSnapshot(assetsCol, (snap) => {
++    const applyAssetsSnap = (snap) => {
++      if (cancelled) return;
+       const list = [];
+       snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+       setAssets(list);
+-    }, (err) => console.log("Assets listener error:", err));
++    };
++    const fetchAssetsOnce = async () => {
++      try {
++        applyAssetsSnap(await getDocs(assetsCol));
++      } catch (err) {
++        console.log("Assets polling error:", err);
++      }
++    };
++    const unsubAssets = onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err));
++    const pollTimer = setInterval(() => {
++      fetchStateOnce('polling');
++      fetchAssetsOnce();
++    }, FIRESTORE_POLL_INTERVAL_MS);
+ 
+-    return () => { clearTimeout(dataWarnTimeout); unsubState(); unsubAssets(); };
++    return () => {
++      cancelled = true;
++      clearTimeout(dataWarnTimeout);
++      clearInterval(pollTimer);
++      unsubState();
++      unsubAssets();
++    };
+   }, [user, localMode]);
+ 
+   useEffect(() => {
+@@ -775,17 +822,34 @@ export default function App() {
+ 
+     if (!localMode && db) {
+       const statusCol = collection(db, 'artifacts', appId, 'public', 'data', 'displayStatus');
+-      return onSnapshot(statusCol, (snap) => {
++      let cancelled = false;
++      const applyStatusSnap = (snap) => {
++        if (cancelled) return;
+         const nextStatuses = {};
+         snap.forEach(d => {
+           nextStatuses[d.id] = { id: d.id, ...d.data() };
+         });
+         setDisplayStatuses(nextStatuses);
+         setSyncInfo(prev => ({ ...prev, displayStatus: 'connected' }));
+-      }, (err) => {
++      };
++      const fetchStatusOnce = async () => {
++        try {
++          applyStatusSnap(await getDocs(statusCol));
++        } catch (err) {
++          console.log("Display status polling error:", err);
++        }
++      };
++      const unsubStatus = onSnapshot(statusCol, applyStatusSnap, (err) => {
+         console.log("Display status listener error:", err);
+         setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
+       });
++      const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
++      fetchStatusOnce();
++      return () => {
++        cancelled = true;
++        clearInterval(statusPollTimer);
++        unsubStatus();
++      };
+     }
+ 
+     const readLocalStatuses = () => {
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 189abab74ee9e2be172d2aebafa525a23064c1ea Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 10 May 2026 22:21:13 +0800
+Subject: [PATCH 03/16] Fix video uploads
+
+---
+ src/App.jsx | 107 ++++++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 88 insertions(+), 19 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index dc5e351..349dce6 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -117,8 +117,8 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+ const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+ const INLINE_IMAGE_MAX_DIMENSION = 1600;
+ const ASSET_REF_PREFIX = 'asset://';
+-const MIN_UPLOAD_TIMEOUT_MS = 45000;
+-const MAX_UPLOAD_TIMEOUT_MS = 8 * 60 * 1000;
++const STORAGE_UPLOAD_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
++const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
+ const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+ const getApplyDelayMs = (applyAt) => {
+   const targetTs = Number(applyAt) || 0;
+@@ -134,11 +134,25 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+ 
+ const getStringBytes = (value) => new TextEncoder().encode(value).length;
+ const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
+-const getUploadTimeoutMs = (file) => {
+-  const sizeBytes = Number(file?.size) || 0;
+-  // Estimate by file size: roughly 4 seconds per MB, with sane floor/ceiling.
+-  const estimated = Math.round((sizeBytes / (1024 * 1024)) * 4000);
+-  return Math.max(MIN_UPLOAD_TIMEOUT_MS, Math.min(MAX_UPLOAD_TIMEOUT_MS, estimated));
++const getFileExtension = (fileName = '') => fileName.split('.').pop()?.toLowerCase() || '';
++const inferFileContentType = (file = {}) => {
++  if (file.type) return file.type;
++  const ext = getFileExtension(file.name);
++  if (ext === 'mov') return 'video/quicktime';
++  if (ext === 'm4v') return 'video/x-m4v';
++  if (ext === 'mp4') return 'video/mp4';
++  if (ext === 'webm') return 'video/webm';
++  if (ext === 'ogv' || ext === 'ogg') return 'video/ogg';
++  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
++  if (ext === 'png') return 'image/png';
++  if (ext === 'webp') return 'image/webp';
++  return 'application/octet-stream';
++};
++const getAssetTypeFromFile = (file = {}) => {
++  const contentType = inferFileContentType(file);
++  if (contentType.startsWith('video/')) return 'video';
++  if (contentType.startsWith('image/')) return 'image';
++  return '';
+ };
+ const toAssetRef = (id) => `${ASSET_REF_PREFIX}${id}`;
+ const parseAssetRef = (value = '') => {
+@@ -263,18 +277,56 @@ const compressImageForFirestore = async (file) => {
+   return dataUrl;
+ };
+ 
+-const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((resolve, reject) => {
++const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
+   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
+-  const uploadTask = uploadBytesResumable(fileRef, file);
++  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
++  let settled = false;
++  let idleTimer = null;
++  const maxTimer = window.setTimeout(() => {
++    if (settled) return;
++    settled = true;
++    uploadTask.cancel();
++    reject(new Error('storage-upload-max-timeout'));
++  }, STORAGE_UPLOAD_MAX_TIMEOUT_MS);
++  const cleanup = () => {
++    window.clearTimeout(maxTimer);
++    if (idleTimer) window.clearTimeout(idleTimer);
++  };
++  const armIdleTimer = () => {
++    if (idleTimer) window.clearTimeout(idleTimer);
++    idleTimer = window.setTimeout(() => {
++      if (settled) return;
++      settled = true;
++      uploadTask.cancel();
++      reject(new Error('storage-upload-stalled'));
++    }, STORAGE_UPLOAD_IDLE_TIMEOUT_MS);
++  };
++  armIdleTimer();
+   uploadTask.on('state_changed',
+-    (snapshot) => onProgress(Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100)),
+-    reject,
++    (snapshot) => {
++      if (settled) return;
++      armIdleTimer();
++      const progress = Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100);
++      onProgress(progress);
++      if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
++    },
++    (error) => {
++      if (settled) return;
++      settled = true;
++      cleanup();
++      reject(error);
++    },
+     async () => {
+       try {
++        if (settled) return;
++        onStatus?.('取得影片網址...');
+         resolve(await getDownloadURL(uploadTask.snapshot.ref));
+       } catch (error) {
+         reject(error);
++      } finally {
++        settled = true;
++        cleanup();
+       }
+     }
+   );
+@@ -282,6 +334,18 @@ const uploadAssetToStorage = (storage, appId, file, onProgress) => new Promise((
+ 
+ const getUploadErrorMessage = (error, fileType) => {
+   const message = error?.message || '';
++  if (message.includes('storage-upload-stalled')) {
++    return '上傳連線停住超過 3 分鐘，請確認網路穩定後再試一次。';
++  }
++  if (message.includes('storage-upload-max-timeout')) {
++    return '影片上傳時間超過 30 分鐘，請壓縮影片或改用「貼上網址」。';
++  }
++  if (error?.code === 'storage/retry-limit-exceeded') {
++    return 'Firebase Storage 連線重試太多次，請確認網路或稍後再試。';
++  }
++  if (error?.code === 'storage/canceled') {
++    return '影片上傳已中斷，請重新選取後再試一次。';
++  }
+   if (message.includes('Not Found') || error?.code === 'storage/bucket-not-found') {
+     return fileType === 'image'
+       ? 'Firebase Storage 尚未啟用，已改用圖片壓縮同步。'
+@@ -1731,13 +1795,16 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+     for (let index = 0; index < selectedFiles.length; index += 1) {
+       const selectedFile = selectedFiles[index];
+       const itemId = getFileId(selectedFile, index);
+-      const fileType = selectedFile.type.startsWith('video/') ? 'video' : 'image';
++      const fileType = getAssetTypeFromFile(selectedFile);
+       const assetName = total === 1 && newName ? newName : selectedFile.name;
+-      const uploadTimeoutMs = getUploadTimeoutMs(selectedFile);
+ 
+       try {
+         patchUploadItem(itemId, { status: 'uploading', progress: 4, message: '準備上傳...' });
+ 
++        if (!fileType) {
++          throw new Error('不支援的檔案格式。請上傳圖片、MP4、MOV、M4V、WebM 或 OGG。');
++        }
++
+         if (localMode) {
+           setAssets(prev => [...prev, { id: Date.now().toString(), name: assetName, url: URL.createObjectURL(selectedFile), type: fileType, createdAt: Date.now() }]);
+           patchUploadItem(itemId, { status: 'done', progress: 100, message: '已加入素材庫' });
+@@ -1751,10 +1818,12 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+ 
+         if (storage) {
+           try {
+-            assetUrl = await runWithTimeout(
+-              uploadAssetToStorage(storage, appId, selectedFile, (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: '上傳中...' })),
+-              uploadTimeoutMs,
+-              '檔案上傳逾時，請檢查網路後重試。'
++            assetUrl = await uploadAssetToStorage(
++              storage,
++              appId,
++              selectedFile,
++              (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: progress >= 99 ? '等待 Firebase 完成處理...' : '上傳中...' }),
++              (message) => patchUploadItem(itemId, { message })
+             );
+           } catch (error) {
+             console.warn('Firebase Storage upload failed:', error);
+@@ -1845,7 +1914,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+                   ref={fileInputRef}
+                   type="file"
+                   multiple
+-                  accept="video/mp4,video/quicktime,.mov,image/jpeg,image/png,image/webp"
++                  accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/ogg,.mov,.m4v,.mp4,.webm,.ogv,.ogg,image/jpeg,image/png,image/webp"
+                   onChange={e => {
+                     const files = Array.from(e.target.files || []);
+                     setSelectedFiles(files);
+@@ -1914,7 +1983,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+                   ))}
+                 </div>
+               )}
+-              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片請使用 Firebase Storage 或改貼外部網址。</p>
++              <p className="text-xs text-slate-500">支援一次上傳多個檔案。圖片會自動壓縮後同步到雲端；影片支援 MP4、MOV、M4V、WebM、OGG，會透過 Firebase Storage 上傳。</p>
+               {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
+               {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
+             </div>
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 27f9ddcc22003e610706b3a1d03e482fcbe3c1b1 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Sun, 10 May 2026 23:33:38 +0800
+Subject: [PATCH 04/16] Show upload speed and ETA
+
+---
+ src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 50 insertions(+), 2 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 349dce6..cb1ccad 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -283,6 +283,9 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
+   const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
+   let settled = false;
+   let idleTimer = null;
++  let lastBytesTransferred = 0;
++  let lastProgressAt = performance.now();
++  let smoothedSpeedBps = 0;
+   const maxTimer = window.setTimeout(() => {
+     if (settled) return;
+     settled = true;
+@@ -307,8 +310,26 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
+     (snapshot) => {
+       if (settled) return;
+       armIdleTimer();
++      const now = performance.now();
++      const elapsedSeconds = Math.max(0.001, (now - lastProgressAt) / 1000);
++      const bytesDelta = Math.max(0, snapshot.bytesTransferred - lastBytesTransferred);
++      if (bytesDelta > 0 && elapsedSeconds >= 0.25) {
++        const instantSpeedBps = bytesDelta / elapsedSeconds;
++        smoothedSpeedBps = smoothedSpeedBps
++          ? (smoothedSpeedBps * 0.65) + (instantSpeedBps * 0.35)
++          : instantSpeedBps;
++        lastBytesTransferred = snapshot.bytesTransferred;
++        lastProgressAt = now;
++      }
+       const progress = Math.max(2, (snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+-      onProgress(progress);
++      const remainingBytes = Math.max(0, snapshot.totalBytes - snapshot.bytesTransferred);
++      onProgress({
++        progress,
++        bytesTransferred: snapshot.bytesTransferred,
++        totalBytes: snapshot.totalBytes,
++        speedBps: smoothedSpeedBps,
++        etaSeconds: smoothedSpeedBps > 0 ? remainingBytes / smoothedSpeedBps : null,
++      });
+       if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
+     },
+     (error) => {
+@@ -1714,6 +1735,23 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+   };
+ 
++  const formatUploadEta = (seconds) => {
++    if (!Number.isFinite(seconds) || seconds < 0) return '';
++    const safeSeconds = Math.ceil(seconds);
++    if (safeSeconds < 60) return `${safeSeconds} 秒`;
++    const minutes = Math.floor(safeSeconds / 60);
++    const remainder = safeSeconds % 60;
++    return `${minutes}分${String(remainder).padStart(2, '0')}秒`;
++  };
++
++  const getUploadProgressMessage = (info) => {
++    const transferText = info.speedBps > 0 ? `${formatFileSize(info.speedBps)}/s` : '';
++    const etaText = Number.isFinite(info.etaSeconds) ? `剩餘 ${formatUploadEta(info.etaSeconds)}` : '';
++    const detail = [transferText, etaText].filter(Boolean).join(' · ');
++    if (info.progress >= 99) return detail ? `等待 Firebase 完成處理... ${detail}` : '等待 Firebase 完成處理...';
++    return detail ? `上傳中... ${detail}` : '上傳中...';
++  };
++
+   const runWithTimeout = async (promise, ms, timeoutMessage) => {
+     let timeoutId;
+     try {
+@@ -1822,7 +1860,12 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+               storage,
+               appId,
+               selectedFile,
+-              (progress) => patchUploadItem(itemId, { progress: Math.max(8, Math.round(progress)), message: progress >= 99 ? '等待 Firebase 完成處理...' : '上傳中...' }),
++              (info) => patchUploadItem(itemId, {
++                progress: Math.max(8, Math.round(info.progress)),
++                speedBps: info.speedBps,
++                etaSeconds: info.etaSeconds,
++                message: getUploadProgressMessage(info),
++              }),
+               (message) => patchUploadItem(itemId, { message })
+             );
+           } catch (error) {
+@@ -1975,6 +2018,11 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
+                           {item.status === 'done' ? '完成' : item.status === 'error' ? '失敗' : item.status === 'uploading' ? '上傳中' : '待上傳'}
+                         </span>
+                       </div>
++                      {item.status === 'uploading' && item.speedBps > 0 && (
++                        <div className="mt-1 text-[11px] font-medium text-blue-600">
++                          {formatFileSize(item.speedBps)}/s{Number.isFinite(item.etaSeconds) ? ` · 剩餘 ${formatUploadEta(item.etaSeconds)}` : ''}
++                        </div>
++                      )}
+                       <div className="w-full bg-slate-200 h-1.5 mt-2 rounded-full overflow-hidden">
+                         <div className={`h-full transition-all duration-300 ${item.status === 'error' ? 'bg-red-400' : 'bg-blue-500'}`} style={{ width: `${item.progress || 0}%` }} />
+                       </div>
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 4bddd44c8234bc4b977a0689d1399e571071d743 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 00:01:29 +0800
+Subject: [PATCH 05/16] Fallback to direct video uploads
+
+---
+ src/App.jsx | 76 +++++++++++++++++++++++++++++++++++++----------------
+ 1 file changed, 54 insertions(+), 22 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index cb1ccad..43c0762 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -14,6 +14,7 @@ import {
+ import { 
+   getStorage, 
+   ref, 
++  uploadBytes,
+   uploadBytesResumable, 
+   getDownloadURL 
+ } from 'firebase/storage';
+@@ -117,7 +118,7 @@ const LIVE_BEZEL_OVERRIDE_TTL_MS = 3000;
+ const INLINE_IMAGE_MAX_BYTES = 850 * 1024;
+ const INLINE_IMAGE_MAX_DIMENSION = 1600;
+ const ASSET_REF_PREFIX = 'asset://';
+-const STORAGE_UPLOAD_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
++const STORAGE_RESUMABLE_FALLBACK_MS = 45 * 1000;
+ const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
+ const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
+ const getApplyDelayMs = (applyAt) => {
+@@ -280,36 +281,67 @@ const compressImageForFirestore = async (file) => {
+ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new Promise((resolve, reject) => {
+   const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+   const fileRef = ref(storage, `artifacts/${appId}/public/data/assets/${Date.now()}_${safeName}`);
+-  const uploadTask = uploadBytesResumable(fileRef, file, { contentType: inferFileContentType(file) });
+-  let settled = false;
+-  let idleTimer = null;
++  const metadata = { contentType: inferFileContentType(file) };
++  const uploadTask = uploadBytesResumable(fileRef, file, metadata);
++  let finished = false;
++  let directFallbackStarted = false;
++  let fallbackTimer = null;
+   let lastBytesTransferred = 0;
+   let lastProgressAt = performance.now();
+   let smoothedSpeedBps = 0;
+   const maxTimer = window.setTimeout(() => {
+-    if (settled) return;
+-    settled = true;
++    if (finished) return;
++    finished = true;
+     uploadTask.cancel();
++    cleanup();
+     reject(new Error('storage-upload-max-timeout'));
+   }, STORAGE_UPLOAD_MAX_TIMEOUT_MS);
++
+   const cleanup = () => {
+     window.clearTimeout(maxTimer);
+-    if (idleTimer) window.clearTimeout(idleTimer);
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++  };
++
++  const completeWithDirectUpload = async () => {
++    if (finished || directFallbackStarted) return;
++    directFallbackStarted = true;
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++    onStatus?.('可續傳連線沒有回應，改用直接上傳...');
++    uploadTask.cancel();
++    try {
++      const snapshot = await uploadBytes(fileRef, file, metadata);
++      if (finished) return;
++      onProgress({
++        progress: 100,
++        bytesTransferred: file.size || 0,
++        totalBytes: file.size || 0,
++        speedBps: 0,
++        etaSeconds: 0,
++      });
++      onStatus?.('取得影片網址...');
++      const downloadUrl = await getDownloadURL(snapshot.ref);
++      if (finished) return;
++      finished = true;
++      cleanup();
++      resolve(downloadUrl);
++    } catch (error) {
++      if (finished) return;
++      finished = true;
++      cleanup();
++      reject(error);
++    }
+   };
+-  const armIdleTimer = () => {
+-    if (idleTimer) window.clearTimeout(idleTimer);
+-    idleTimer = window.setTimeout(() => {
+-      if (settled) return;
+-      settled = true;
+-      uploadTask.cancel();
+-      reject(new Error('storage-upload-stalled'));
+-    }, STORAGE_UPLOAD_IDLE_TIMEOUT_MS);
++
++  const armFallbackTimer = () => {
++    if (fallbackTimer) window.clearTimeout(fallbackTimer);
++    fallbackTimer = window.setTimeout(completeWithDirectUpload, STORAGE_RESUMABLE_FALLBACK_MS);
+   };
+-  armIdleTimer();
++
++  armFallbackTimer();
+   uploadTask.on('state_changed',
+     (snapshot) => {
+-      if (settled) return;
+-      armIdleTimer();
++      if (finished || directFallbackStarted) return;
++      armFallbackTimer();
+       const now = performance.now();
+       const elapsedSeconds = Math.max(0.001, (now - lastProgressAt) / 1000);
+       const bytesDelta = Math.max(0, snapshot.bytesTransferred - lastBytesTransferred);
+@@ -333,20 +365,20 @@ const uploadAssetToStorage = (storage, appId, file, onProgress, onStatus) => new
+       if (progress >= 99) onStatus?.('等待 Firebase 完成處理...');
+     },
+     (error) => {
+-      if (settled) return;
+-      settled = true;
++      if (finished || directFallbackStarted) return;
++      finished = true;
+       cleanup();
+       reject(error);
+     },
+     async () => {
+       try {
+-        if (settled) return;
++        if (finished || directFallbackStarted) return;
+         onStatus?.('取得影片網址...');
+         resolve(await getDownloadURL(uploadTask.snapshot.ref));
+       } catch (error) {
+         reject(error);
+       } finally {
+-        settled = true;
++        finished = true;
+         cleanup();
+       }
+     }
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 40cc38b70f0f7bef096237db7c23411539e91e59 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 12:22:26 +0800
+Subject: [PATCH 06/16] Stabilize display heartbeat and playback sync
+
+---
+ src/App.jsx | 52 ++++++++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 48 insertions(+), 4 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 43c0762..4fda860 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -5,6 +5,8 @@ import {
+   doc, 
+   getDoc,
+   setDoc, 
++  serverTimestamp,
++  enableNetwork,
+   onSnapshot,
+   collection,
+   getDocs,
+@@ -132,6 +134,22 @@ const getSafeRemoteTimestamp = (remoteTs, now = Date.now()) => {
+   if (parsed > now + MAX_SYNC_WAIT_MS) return now;
+   return parsed;
+ };
++const isFirestoreOfflineError = (error = {}) => {
++  const message = String(error?.message || '').toLowerCase();
++  return error?.code === 'unavailable' || message.includes('client is offline') || message.includes('offline');
++};
++const toMillis = (value) => {
++  if (!value) return 0;
++  if (typeof value === 'number') return value;
++  if (typeof value.toMillis === 'function') return value.toMillis();
++  if (Number.isFinite(value.seconds)) return (value.seconds * 1000) + Math.round((value.nanoseconds || 0) / 1000000);
++  return Number(value) || 0;
++};
++const getSynchronizedLocalStartTime = (remoteStartTime, receivedAt = Date.now()) => {
++  const parsedRemote = Number(remoteStartTime) || receivedAt;
++  const delta = parsedRemote - receivedAt;
++  return Math.abs(delta) <= MAX_SYNC_WAIT_MS ? receivedAt + delta : receivedAt;
++};
+ 
+ const getStringBytes = (value) => new TextEncoder().encode(value).length;
+ const clampBezelGap = (value) => Math.max(0, Math.min(BEZEL_GAP_MAX, Number(value) || 0));
+@@ -872,6 +890,17 @@ export default function App() {
+ 
+     const handleFirestoreError = (err) => {
+       if (cancelled) return;
++      if (isFirestoreOfflineError(err)) {
++        console.warn("Firestore temporarily offline; keeping retry loop alive:", err);
++        setSyncInfo(prev => ({
++          ...prev,
++          mode: 'cloud-pending',
++          data: 'retrying-offline',
++          reason: 'Firestore temporarily offline, still retrying...',
++        }));
++        setLoading(false);
++        return;
++      }
+       dataSettled = true;
+       clearTimeout(dataWarnTimeout);
+       console.error("Firestore error:", err);
+@@ -888,6 +917,7 @@ export default function App() {
+ 
+     const fetchStateOnce = async (source = 'polling') => {
+       try {
++        await enableNetwork(db).catch(() => null);
+         const docSnap = await getDoc(stateDoc);
+         applyStateSnap(docSnap, source);
+       } catch (err) {
+@@ -1213,7 +1243,7 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+   }), [activeScene, assetUrlById]);
+   const connectedScreens = useMemo(() => SCREEN_IDS.map(id => {
+     const status = displayStatuses?.[id] || {};
+-    const lastSeen = Number(status.lastSeen) || 0;
++    const lastSeen = toMillis(status.lastSeenServer) || Number(status.lastSeen) || 0;
+     const online = lastSeen > 0 && now - lastSeen < HEARTBEAT_STALE_MS;
+     const ageSeconds = lastSeen > 0 ? Math.max(0, Math.round((now - lastSeen) / 1000)) : null;
+     return { id, status, online, ageSeconds };
+@@ -2197,6 +2227,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+     volume: Number.isFinite(bgm?.volume) ? bgm.volume : 50,
+   });
+   const [liveBezelOverride, setLiveBezelOverride] = useState(null);
++  const [localPlaybackStartTime, setLocalPlaybackStartTime] = useState(() => getSynchronizedLocalStartTime(startTime));
+   const assetUrlById = useMemo(() => {
+     const map = {};
+     (assets || []).forEach((asset) => {
+@@ -2222,7 +2253,17 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+     return () => clearInterval(timer);
+   }, []);
+ 
+-  const playback = useMemo(() => getPlaybackSnapshot(globalState, now), [globalState, now]);
++  useEffect(() => {
++    if (!isPlaying || standbyMode) return;
++    setLocalPlaybackStartTime(getSynchronizedLocalStartTime(startTime, Date.now()));
++  }, [isPlaying, standbyMode, startTime]);
++
++  const displayPlaybackState = useMemo(() => (
++    isPlaying && !standbyMode
++      ? { ...globalState, startTime: localPlaybackStartTime }
++      : globalState
++  ), [globalState, isPlaying, standbyMode, localPlaybackStartTime]);
++  const playback = useMemo(() => getPlaybackSnapshot(displayPlaybackState, now), [displayPlaybackState, now]);
+   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
+ 
+   useEffect(() => {
+@@ -2305,7 +2346,10 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+       };
+ 
+       if (!localMode && db) {
+-        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), payload, { merge: true })
++        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), {
++          ...payload,
++          lastSeenServer: serverTimestamp(),
++        }, { merge: true })
+           .catch(error => console.warn("Display heartbeat failed:", error));
+         return;
+       }
+@@ -2316,7 +2360,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+     writeHeartbeat();
+     const heartbeatTimer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
+     return () => clearInterval(heartbeatTimer);
+-  }, [id, db, appId, localMode]);
++  }, [id, db, appId, localMode, audioUnlocked, isPlaying, standbyMode, currentScene?.id]);
+ 
+   useEffect(() => {
+     let stream = null;
+-- 
+2.50.1 (Apple Git-155)
+
+
 From e054431be6c9d062ea766a4f37e3617f9ef137f6 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:44:13 +0800
-Subject: [PATCH 1/8] Add playback command channel
+Subject: [PATCH 07/16] Add playback command channel
 
 ---
  src/App.jsx | 99 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -175,7 +1014,7 @@ index 4fda860..d95400c 100644
 From c1f965580c86c76a2c8bdf6b88b823edbed9202b Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 12:53:33 +0800
-Subject: [PATCH 2/8] Stabilize display connection heartbeat
+Subject: [PATCH 08/16] Stabilize display connection heartbeat
 
 ---
  src/App.jsx | 59 ++++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -294,7 +1133,7 @@ index d95400c..53ceb77 100644
 From b2371eecffb9d34cac1425f10550c4a150c01eb0 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:36:09 +0800
-Subject: [PATCH 3/8] Improve multi-display playback timing
+Subject: [PATCH 09/16] Improve multi-display playback timing
 
 ---
  src/App.jsx | 37 +++++++++++++++++++++++++++++++++++--
@@ -386,7 +1225,7 @@ index 53ceb77..164fea3 100644
 From 98b35cbb3995e568b1e7deb9dd5fa9dec843046e Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 13:53:41 +0800
-Subject: [PATCH 4/8] Speed up asset uploads
+Subject: [PATCH 10/16] Speed up asset uploads
 
 ---
  src/App.jsx | 128 +++++++++++++++++++++++++++++++++++++++++++++++++---
@@ -576,7 +1415,7 @@ index 164fea3..dc24519 100644
 From 183589f290d8b400ef2ed4183415b7ff0e85d641 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:10:09 +0800
-Subject: [PATCH 5/8] Treat Firestore internal assertion as transient
+Subject: [PATCH 11/16] Treat Firestore internal assertion as transient
 
 ---
  src/App.jsx | 22 +++++++++++++++++++---
@@ -643,7 +1482,7 @@ index dc24519..3759bd7 100644
 From b35738f04602e0921bddbc0a211dbf00ab989d5f Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:29:53 +0800
-Subject: [PATCH 6/8] Fallback asset metadata writes to Firestore REST
+Subject: [PATCH 12/16] Fallback asset metadata writes to Firestore REST
 
 ---
  src/App.jsx | 62 +++++++++++++++++++++++++++++++++++++++++++++++++++--
@@ -745,7 +1584,7 @@ index 3759bd7..b566697 100644
 From f99def477a5712855f179fa3bb977eab2d6a55e3 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:39:29 +0800
-Subject: [PATCH 7/8] Add REST fallback for display sync
+Subject: [PATCH 13/16] Add REST fallback for display sync
 
 ---
  src/App.jsx | 187 +++++++++++++++++++++++++++++++++++++++++++++++-----
@@ -1065,7 +1904,7 @@ index b566697..8fd0731 100644
 From 4c3879e6c49bba90b7f355f7242745e942861d04 Mon Sep 17 00:00:00 2001
 From: Codex <codex@local>
 Date: Mon, 11 May 2026 14:52:09 +0800
-Subject: [PATCH 8/8] Bypass Storage for image uploads
+Subject: [PATCH 14/16] Bypass Storage for image uploads
 
 ---
  src/App.jsx | 14 +++++++-------
@@ -1112,6 +1951,248 @@ index 8fd0731..8023c1a 100644
                {uploadError && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> <span>{uploadError}</span></div>}
                {uploadSuccess && <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"><UploadCloud size={14} className="mt-0.5 shrink-0" /> <span>{uploadSuccess}</span></div>}
              </div>
+-- 
+2.50.1 (Apple Git-155)
+
+
+From b018ba0e47475ad7cb27048e9e2fe38726c660bb Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 15:56:15 +0800
+Subject: [PATCH 15/16] Improve REST backup display heartbeats
+
+---
+ src/App.jsx | 67 ++++++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 9 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index 8023c1a..d80ad5f 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -112,6 +112,7 @@ const PLAYBACK_COMMAND_POLL_MS = 500;
+ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
++const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 800;
+ const MAX_SYNC_WAIT_MS = 1200;
+@@ -149,6 +150,13 @@ const isFirestoreOfflineError = (error = {}) => {
+     || message.includes('webchannel')
+     || message.includes('transport errored');
+ };
++const isCloudDataUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
++const isCloudDisplayUsable = (status) => ['connected', 'rest-backup', 'polling-backup'].includes(status);
++const getCloudSyncState = (syncInfo = {}) => {
++  if (syncInfo.mode !== 'cloud') return 'not-ready';
++  if (!isCloudDataUsable(syncInfo.data) || !isCloudDisplayUsable(syncInfo.displayStatus)) return 'not-ready';
++  return syncInfo.data === 'connected' && syncInfo.displayStatus === 'connected' ? 'realtime' : 'backup';
++};
+ const toMillis = (value) => {
+   if (!value) return 0;
+   if (typeof value === 'number') return value;
+@@ -1324,14 +1332,20 @@ export default function App() {
+         });
+         applyStatusList(Object.values(nextStatuses));
+       };
++      const fetchStatusViaRest = async () => {
++        const restStatuses = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/displayStatus`);
++        if (restStatuses.length > 0) applyStatusList(restStatuses, 'rest');
++        return restStatuses;
++      };
+       const fetchStatusOnce = async () => {
+         try {
+           applyStatusSnap(await getDocs(statusCol));
++          fetchStatusViaRest().catch(restError => console.warn("Display status REST check failed:", restError));
+         } catch (err) {
+           console.log("Display status polling error:", err);
+           if (isFirestoreOfflineError(err)) {
+             try {
+-              applyStatusList(await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/displayStatus`), 'rest');
++              await fetchStatusViaRest();
+               return;
+             } catch (restError) {
+               console.warn("Display status REST fallback failed:", restError);
+@@ -1607,7 +1621,17 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+     return { id, status, online, ageSeconds };
+   }), [displayStatuses, now]);
+   const onlineCount = connectedScreens.filter(screen => screen.online).length;
+-  const isCloudReady = syncInfo?.mode === 'cloud' && syncInfo?.displayStatus === 'connected';
++  const cloudSyncState = getCloudSyncState(syncInfo);
++  const cloudStatusLabel = cloudSyncState === 'realtime'
++    ? '雲端同步'
++    : cloudSyncState === 'backup'
++      ? '雲端備援同步'
++      : '本機/未完整同步';
++  const cloudStatusClass = cloudSyncState === 'realtime'
++    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
++    : cloudSyncState === 'backup'
++      ? 'text-sky-700 bg-sky-50 border-sky-200'
++      : 'text-amber-700 bg-amber-100 border-amber-200';
+ 
+   useEffect(() => {
+     const timer = setInterval(() => setNow(Date.now()), 500);
+@@ -1889,11 +1913,20 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+                 <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">螢幕連線</div>
+                 <div className="text-lg font-semibold text-slate-900">{onlineCount}/3 在線</div>
+               </div>
+-              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${isCloudReady ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-100 border-amber-200'}`}>
+-                {isCloudReady ? '雲端同步' : '本機/未完整同步'}
++              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${cloudStatusClass}`}>
++                {cloudStatusLabel}
+               </span>
+             </div>
+-            {!isCloudReady && (
++            {cloudSyncState === 'backup' && (
++              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
++                Firestore 即時通道不穩，已改用雲端備援同步。跨裝置仍會更新，通常會有 1-3 秒延遲。
++                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px]">
++                  <span>Data: {syncInfo?.data || 'unknown'}</span>
++                  <span>Display: {syncInfo?.displayStatus || 'unknown'}</span>
++                </div>
++              </div>
++            )}
++            {cloudSyncState === 'not-ready' && (
+               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                 手機跨裝置連線需要雲端同步。若同一台電腦兩個分頁會顯示、手機不會，代表目前沒有成功使用 Firestore 心跳。
+                 {(localModeReason || syncInfo?.reason) && <span className="block mt-1 font-mono text-[11px] text-amber-700">原因：{localModeReason || syncInfo?.reason}</span>}
+@@ -2838,17 +2871,33 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
+       };
+ 
+       if (!localMode && db) {
++        const restPayload = {
++          ...payload,
++          lastSeenServer: Date.now(),
++        };
++        const writeHeartbeatViaRest = () => (
++          setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/displayStatus/${id}`, restPayload)
++            .catch(restError => console.warn("Display heartbeat REST fallback failed:", restError))
++        );
++        let heartbeatSettled = false;
++        const fallbackTimer = setTimeout(() => {
++          if (!heartbeatSettled) writeHeartbeatViaRest();
++        }, DISPLAY_HEARTBEAT_REST_FALLBACK_MS);
++
+         setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'displayStatus', id), {
+           ...payload,
+           lastSeenServer: serverTimestamp(),
+         }, { merge: true })
++          .then(() => {
++            heartbeatSettled = true;
++            clearTimeout(fallbackTimer);
++          })
+           .catch((error) => {
++            heartbeatSettled = true;
++            clearTimeout(fallbackTimer);
+             console.warn("Display heartbeat failed:", error);
+             if (isFirestoreOfflineError(error)) {
+-              setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/displayStatus/${id}`, {
+-                ...payload,
+-                lastSeenServer: Date.now(),
+-              }).catch(restError => console.warn("Display heartbeat REST fallback failed:", restError));
++              writeHeartbeatViaRest();
+             }
+           });
+         return;
+-- 
+2.50.1 (Apple Git-155)
+
+
+From 9f3c7b0e742c4c81106aa0c01526efdb4f55477a Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Mon, 11 May 2026 16:29:56 +0800
+Subject: [PATCH 16/16] Use REST backup for scene updates
+
+---
+ src/App.jsx | 55 +++++++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 47 insertions(+), 8 deletions(-)
+
+diff --git a/src/App.jsx b/src/App.jsx
+index d80ad5f..3e5a4ba 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -112,6 +112,7 @@ const PLAYBACK_COMMAND_POLL_MS = 500;
+ const AUTH_FALLBACK_TIMEOUT_MS = 20000;
+ const FIRESTORE_WARN_TIMEOUT_MS = 12000;
+ const FIRESTORE_POLL_INTERVAL_MS = 2500;
++const CLOUD_WRITE_REST_FALLBACK_MS = 900;
+ const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
+ const BEZEL_GAP_MAX = 400;
+ const SYNC_COMMAND_LEAD_MS = 800;
+@@ -1011,19 +1012,46 @@ export default function App() {
+   const enqueueCloudWrite = (payload, immediate = false) => {
+     if (!db || !payload || Object.keys(payload).length === 0) return Promise.resolve();
+     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
+-    const writeStateRestFallback = (error) => {
+-      console.error("Update error:", error);
+-      if (!isFirestoreOfflineError(error)) return Promise.resolve();
++    const writeStateRestFallback = (error, force = false) => {
++      if (error) console.warn("Update SDK delayed or failed:", error);
++      if (!force && !isFirestoreOfflineError(error)) return Promise.resolve();
+       return setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`, payload)
+         .catch(restError => console.error("REST update error:", restError));
+     };
++    const writeStateWithBackup = () => {
++      let sdkSettled = false;
++      let restStarted = false;
++      const startRestBackup = (error, force = false) => {
++        if (restStarted) return Promise.resolve();
++        restStarted = true;
++        return writeStateRestFallback(error, force);
++      };
++      const sdkWrite = setDoc(stateDoc, payload, { merge: true })
++        .then(() => {
++          sdkSettled = true;
++        })
++        .catch((error) => {
++          sdkSettled = true;
++          return startRestBackup(error);
++        });
++      const timeoutBackup = new Promise((resolve) => {
++        const timer = setTimeout(() => {
++          if (sdkSettled) {
++            resolve();
++            return;
++          }
++          startRestBackup(new Error('Firestore write delayed; using REST backup'), true).finally(resolve);
++        }, CLOUD_WRITE_REST_FALLBACK_MS);
++        sdkWrite.finally(() => clearTimeout(timer));
++      });
++      return Promise.race([sdkWrite, timeoutBackup]);
++    };
+     if (immediate) {
+-      return setDoc(stateDoc, payload, { merge: true }).catch(writeStateRestFallback);
++      return writeStateWithBackup();
+     }
+     cloudWriteChainRef.current = cloudWriteChainRef.current
+       .catch(() => null)
+-      .then(() => setDoc(stateDoc, payload, { merge: true }))
+-      .catch(writeStateRestFallback);
++      .then(writeStateWithBackup);
+     return cloudWriteChainRef.current;
+   };
+ 
+@@ -1757,8 +1785,19 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
+   };
+ 
+   const addScene = () => {
+-    const newScene = { ...DEFAULT_SCENE, id: Date.now().toString(), name: `新場景 ${timeline.length + 1}` };
+-    updateGlobalState({ timeline: [...timeline, newScene] }, { immediate: true });
++    const newScene = {
++      ...DEFAULT_SCENE,
++      id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
++      name: `新場景 ${timeline.length + 1}`,
++      screens: {
++        '1': { ...DEFAULT_SCENE.screens['1'] },
++        '2': { ...DEFAULT_SCENE.screens['2'] },
++        '3': { ...DEFAULT_SCENE.screens['3'] },
++      },
++    };
++    updateGlobalState((prev) => ({
++      timeline: [...(Array.isArray(prev.timeline) && prev.timeline.length > 0 ? prev.timeline : [DEFAULT_SCENE]), newScene],
++    }), { immediate: true });
+     setSelectedSceneId(newScene.id);
+   };
+   const deleteScene = (id) => {
 -- 
 2.50.1 (Apple Git-155)
 

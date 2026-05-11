@@ -112,6 +112,7 @@ const PLAYBACK_COMMAND_POLL_MS = 500;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
 const FIRESTORE_POLL_INTERVAL_MS = 2500;
+const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
 const BEZEL_GAP_MAX = 400;
 const SYNC_COMMAND_LEAD_MS = 800;
@@ -1011,19 +1012,46 @@ export default function App() {
   const enqueueCloudWrite = (payload, immediate = false) => {
     if (!db || !payload || Object.keys(payload).length === 0) return Promise.resolve();
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
-    const writeStateRestFallback = (error) => {
-      console.error("Update error:", error);
-      if (!isFirestoreOfflineError(error)) return Promise.resolve();
+    const writeStateRestFallback = (error, force = false) => {
+      if (error) console.warn("Update SDK delayed or failed:", error);
+      if (!force && !isFirestoreOfflineError(error)) return Promise.resolve();
       return setFirestoreRestDocument(appId, `artifacts/${appId}/public/data/appConfig/globalState`, payload)
         .catch(restError => console.error("REST update error:", restError));
     };
+    const writeStateWithBackup = () => {
+      let sdkSettled = false;
+      let restStarted = false;
+      const startRestBackup = (error, force = false) => {
+        if (restStarted) return Promise.resolve();
+        restStarted = true;
+        return writeStateRestFallback(error, force);
+      };
+      const sdkWrite = setDoc(stateDoc, payload, { merge: true })
+        .then(() => {
+          sdkSettled = true;
+        })
+        .catch((error) => {
+          sdkSettled = true;
+          return startRestBackup(error);
+        });
+      const timeoutBackup = new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          if (sdkSettled) {
+            resolve();
+            return;
+          }
+          startRestBackup(new Error('Firestore write delayed; using REST backup'), true).finally(resolve);
+        }, CLOUD_WRITE_REST_FALLBACK_MS);
+        sdkWrite.finally(() => clearTimeout(timer));
+      });
+      return Promise.race([sdkWrite, timeoutBackup]);
+    };
     if (immediate) {
-      return setDoc(stateDoc, payload, { merge: true }).catch(writeStateRestFallback);
+      return writeStateWithBackup();
     }
     cloudWriteChainRef.current = cloudWriteChainRef.current
       .catch(() => null)
-      .then(() => setDoc(stateDoc, payload, { merge: true }))
-      .catch(writeStateRestFallback);
+      .then(writeStateWithBackup);
     return cloudWriteChainRef.current;
   };
 
@@ -1757,8 +1785,19 @@ function ControllerView({ globalState, updateGlobalState, assets, setAssets, db,
   };
 
   const addScene = () => {
-    const newScene = { ...DEFAULT_SCENE, id: Date.now().toString(), name: `新場景 ${timeline.length + 1}` };
-    updateGlobalState({ timeline: [...timeline, newScene] }, { immediate: true });
+    const newScene = {
+      ...DEFAULT_SCENE,
+      id: `scene-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: `新場景 ${timeline.length + 1}`,
+      screens: {
+        '1': { ...DEFAULT_SCENE.screens['1'] },
+        '2': { ...DEFAULT_SCENE.screens['2'] },
+        '3': { ...DEFAULT_SCENE.screens['3'] },
+      },
+    };
+    updateGlobalState((prev) => ({
+      timeline: [...(Array.isArray(prev.timeline) && prev.timeline.length > 0 ? prev.timeline : [DEFAULT_SCENE]), newScene],
+    }), { immediate: true });
     setSelectedSceneId(newScene.id);
   };
   const deleteScene = (id) => {
