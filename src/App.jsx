@@ -2999,6 +2999,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const fxRef = useRef(null);
   const lastFxTimestampRef = useRef(0);
   const wakeLockRef = useRef(null);
+  const assetUrlCacheRef = useRef({});
   const heartbeatSnapshotRef = useRef({
     sceneId: '',
     sceneName: '未命名場景',
@@ -3036,6 +3037,26 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     });
     return map;
   }, [assets]);
+
+  useEffect(() => {
+    const nextCache = { ...assetUrlCacheRef.current };
+    Object.entries(assetUrlById).forEach(([assetId, assetUrl]) => {
+      if (!assetId || !assetUrl) return;
+      nextCache[assetId] = assetUrl;
+    });
+    assetUrlCacheRef.current = nextCache;
+  }, [assetUrlById]);
+
+  const resolveAssetContentStable = (value = '') => {
+    const assetId = parseAssetRef(value);
+    if (!assetId) return value;
+    const liveUrl = assetUrlById[assetId];
+    if (liveUrl) {
+      assetUrlCacheRef.current[assetId] = liveUrl;
+      return liveUrl;
+    }
+    return assetUrlCacheRef.current[assetId] || '';
+  };
 
   const requestDisplayWakeLock = async () => {
     if (!navigator.wakeLock || document.visibilityState !== 'visible' || wakeLockRef.current) return;
@@ -3446,8 +3467,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   }
 
   const screenData = currentScene.screens?.[id] || { type: 'color', content: '#000' };
-  const resolvedScreenContent = resolveAssetContent(screenData.content || '', assetUrlById);
-  const resolvedSpanContent = resolveAssetContent(currentScene.spanContent || '', assetUrlById);
+  const resolvedScreenContent = resolveAssetContentStable(screenData.content || '');
+  const resolvedSpanContent = resolveAssetContentStable(currentScene.spanContent || '');
   const transitionClass = TRANSITIONS.find(t => t.id === currentScene.transition)?.class || 'animate-in fade-in duration-1000';
   const liveBezelStillFresh = Boolean(
     liveBezelOverride &&
@@ -3475,7 +3496,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
             )}
             {currentScene.spanType === 'video' && resolvedSpanContent && (
                <div style={{ position: 'absolute', width: spanTotalWidth, height: '100vh', left: spanLeftOffset }}>
-                 <video ref={spanVideoRef} src={resolvedSpanContent} autoPlay muted={!audioUnlocked} loop playsInline className="w-full h-full object-cover" />
+                 <video ref={spanVideoRef} src={resolvedSpanContent} autoPlay muted={!audioUnlocked} loop playsInline preload="auto" className="w-full h-full object-cover" />
                </div>
             )}
             {currentScene.spanType === 'text' && resolvedSpanContent && (
@@ -3490,7 +3511,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
           <>
             {screenData.type === 'color' && <div className="w-full h-full transition-colors duration-1000" style={{ backgroundColor: screenData.content || '#000' }} />}
             {screenData.type === 'image' && resolvedScreenContent && <img src={resolvedScreenContent} className="w-full h-full object-cover" />}
-            {screenData.type === 'video' && resolvedScreenContent && <video ref={screenVideoRef} src={resolvedScreenContent} autoPlay muted={!audioUnlocked} loop playsInline className="w-full h-full object-cover" />}
+            {screenData.type === 'video' && resolvedScreenContent && <video ref={screenVideoRef} src={resolvedScreenContent} autoPlay muted={!audioUnlocked} loop playsInline preload="auto" className="w-full h-full object-cover" />}
             {screenData.type === 'text' && <div className="text-[10vw] font-semibold text-white text-center leading-tight tracking-tight drop-shadow-2xl px-12">{resolvedScreenContent}</div>}
             {screenData.type === 'camera' && <video ref={cameraVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />}
             {screenData.type === 'qrcode' && (
