@@ -108,18 +108,18 @@ const SCREEN_IDS = ['1', '2', '3'];
 const HEARTBEAT_STALE_MS = 60000;
 const HEARTBEAT_INTERVAL_MS = 2000;
 const PLAYBACK_COMMAND_POLL_MS = 500;
-const PLAYBACK_COMMAND_REST_CHECK_MS = 1500;
+const PLAYBACK_COMMAND_REST_CHECK_MS = 750;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
-const FIRESTORE_POLL_INTERVAL_MS = 2500;
+const FIRESTORE_POLL_INTERVAL_MS = 1000;
 const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
 const ASSET_WRITE_REST_FALLBACK_MS = 900;
 const SDK_READ_REST_FALLBACK_MS = 900;
 const LOCAL_WRITE_PROTECT_MS = 8000;
 const BEZEL_GAP_MAX = 400;
-const SYNC_COMMAND_LEAD_MS = 800;
-const MAX_SYNC_WAIT_MS = 1200;
+const SYNC_COMMAND_LEAD_MS = 1400;
+const MAX_SYNC_WAIT_MS = 2200;
 const MAX_REMOTE_PLAYBACK_DRIFT_MS = 30 * 60 * 1000;
 const CLOUD_WRITE_DEBOUNCE_MS = 140;
 const LIVE_BEZEL_EMIT_INTERVAL_MS = 140;
@@ -1064,10 +1064,10 @@ export default function App() {
         restStarted = true;
         return writeStateRestFallback(error, force);
       };
+      const restMirrorWrite = startRestBackup(null, true);
       const sdkWrite = setDoc(stateDoc, payload, { merge: true })
         .then(() => {
           sdkSettled = true;
-          startRestBackup(null, true);
         })
         .catch((error) => {
           sdkSettled = true;
@@ -1083,7 +1083,10 @@ export default function App() {
         }, CLOUD_WRITE_REST_FALLBACK_MS);
         sdkWrite.finally(() => clearTimeout(timer));
       });
-      return Promise.race([sdkWrite, timeoutBackup]);
+      return Promise.race([
+        Promise.allSettled([sdkWrite, restMirrorWrite]).then(() => undefined),
+        timeoutBackup,
+      ]);
     };
     if (immediate) {
       return writeStateWithBackup();
@@ -1356,6 +1359,9 @@ export default function App() {
       restFallbackTimer = setTimeout(() => {
         startRestFallback().catch(restError => console.warn("Firestore REST state timed fallback failed:", restError));
       }, SDK_READ_REST_FALLBACK_MS);
+      if (source === 'polling') {
+        startRestFallback().catch(restError => console.warn("Firestore REST state primary check failed:", restError));
+      }
       try {
         await enableNetwork(db).catch(() => null);
         const docSnap = await getDoc(stateDoc);
@@ -1385,6 +1391,7 @@ export default function App() {
     }, FIRESTORE_WARN_TIMEOUT_MS);
     
     const unsubState = onSnapshot(stateDoc, (docSnap) => applyStateSnap(docSnap, 'realtime'), handleFirestoreError);
+    fetchStateOnce('polling');
 
     const assetsCol = collection(db, 'artifacts', appId, 'public', 'data', 'assets');
     const applyAssetsList = (list) => {
@@ -1427,6 +1434,7 @@ export default function App() {
       }
     };
     const unsubAssets = onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err));
+    fetchAssetsOnce();
     const pollTimer = setInterval(() => {
       fetchStateOnce('polling');
       fetchAssetsOnce();
@@ -1554,8 +1562,9 @@ export default function App() {
     if (!updates || typeof updates !== 'object') return;
     let nextState = { ...baseState, ...updates };
     const writeTimestamp = Date.now();
+    const stateVersion = `${writeTimestamp}-${Math.random().toString(36).slice(2, 8)}`;
     if (!skipCloud) {
-      nextState = { ...nextState, updatedAt: writeTimestamp };
+      nextState = { ...nextState, updatedAt: writeTimestamp, stateVersion };
     }
     let timelineWasRewritten = false;
     if (Array.isArray(nextState.timeline)) {
@@ -1566,8 +1575,8 @@ export default function App() {
       }
     }
     const cloudUpdates = timelineWasRewritten
-      ? { ...updates, timeline: nextState.timeline, updatedAt: nextState.updatedAt }
-      : { ...updates, updatedAt: nextState.updatedAt };
+      ? { ...updates, timeline: nextState.timeline, updatedAt: nextState.updatedAt, stateVersion: nextState.stateVersion }
+      : { ...updates, updatedAt: nextState.updatedAt, stateVersion: nextState.stateVersion };
     globalStateRef.current = nextState;
     setGlobalState(nextState);
     if (skipCloud) {
