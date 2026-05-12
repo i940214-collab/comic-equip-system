@@ -111,7 +111,11 @@ const PLAYBACK_COMMAND_POLL_MS = 500;
 const PLAYBACK_COMMAND_REST_CHECK_MS = 750;
 const AUTH_FALLBACK_TIMEOUT_MS = 20000;
 const FIRESTORE_WARN_TIMEOUT_MS = 12000;
-const FIRESTORE_POLL_INTERVAL_MS = 1000;
+const FIRESTORE_STATE_POLL_INTERVAL_MS = 1000;
+const FIRESTORE_ASSET_POLL_INTERVAL_MS = 2500;
+const FIRESTORE_DISPLAY_STATE_POLL_INTERVAL_MS = 1600;
+const FIRESTORE_DISPLAY_ASSET_POLL_INTERVAL_MS = 12000;
+const FIRESTORE_STATUS_POLL_INTERVAL_MS = 1500;
 const CLOUD_WRITE_REST_FALLBACK_MS = 900;
 const DISPLAY_HEARTBEAT_REST_FALLBACK_MS = 900;
 const ASSET_WRITE_REST_FALLBACK_MS = 900;
@@ -132,9 +136,6 @@ const STORAGE_RESUMABLE_FALLBACK_MS = 8 * 1000;
 const STORAGE_FAST_UPLOAD_MAX_BYTES = 120 * 1024 * 1024;
 const STORAGE_DIRECT_UPLOAD_TIMEOUT_MS = 4 * 60 * 1000;
 const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
-const VIDEO_STALL_CHECK_INTERVAL_MS = 1200;
-const VIDEO_STALL_DETECT_MS = 4500;
-const VIDEO_STALL_RECOVER_COOLDOWN_MS = 4000;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
 const getApplyDelayMs = (applyAt) => {
   const targetTs = Number(applyAt) || 0;
@@ -1337,12 +1338,16 @@ export default function App() {
     }
 
     if (!user || !db) return;
+    const isDisplayView = viewMode === 'display';
+    const statePollIntervalMs = isDisplayView ? FIRESTORE_DISPLAY_STATE_POLL_INTERVAL_MS : FIRESTORE_STATE_POLL_INTERVAL_MS;
+    const assetPollIntervalMs = isDisplayView ? FIRESTORE_DISPLAY_ASSET_POLL_INTERVAL_MS : FIRESTORE_ASSET_POLL_INTERVAL_MS;
     
     // 路徑: artifacts -> appId -> public -> data -> appConfig -> globalState
     const stateDoc = doc(db, 'artifacts', appId, 'public', 'data', 'appConfig', 'globalState');
     let dataSettled = false;
     let cancelled = false;
     let dataWarnTimeout = null;
+    let stateFetchInFlight = false;
 
     const applyStateData = (data, source = 'realtime') => {
       if (cancelled) return;
@@ -1431,6 +1436,9 @@ export default function App() {
     };
 
     const fetchStateOnce = async (source = 'polling') => {
+      if (cancelled) return;
+      if (stateFetchInFlight && source === 'polling') return;
+      stateFetchInFlight = true;
       let restFallbackStarted = false;
       let restFallbackTimer = null;
       const startRestFallback = async () => {
@@ -1458,6 +1466,8 @@ export default function App() {
           }
         }
         handleFirestoreError(err);
+      } finally {
+        stateFetchInFlight = false;
       }
     };
 
@@ -1647,26 +1657,34 @@ export default function App() {
       ? onSnapshot(assetsCol, applyAssetsSnap, (err) => console.log("Assets listener error:", err))
       : () => {};
     fetchAssetsOnce();
-    const pollTimer = setInterval(() => {
+    const statePollTimer = setInterval(() => {
       fetchStateOnce('polling');
+    }, statePollIntervalMs);
+    const assetPollTimer = setInterval(() => {
       fetchAssetsOnce();
-    }, FIRESTORE_POLL_INTERVAL_MS);
+    }, assetPollIntervalMs);
 
     return () => {
       cancelled = true;
       clearTimeout(dataWarnTimeout);
-      clearInterval(pollTimer);
+      clearInterval(statePollTimer);
+      clearInterval(assetPollTimer);
       unsubState();
       unsubAssets();
     };
-  }, [user, localMode]);
+  }, [user, localMode, viewMode]);
 
   useEffect(() => {
     if (!user) return;
+    if (viewMode !== 'controller') {
+      setDisplayStatuses({});
+      return;
+    }
 
     if (!localMode && db) {
       const statusCol = collection(db, 'artifacts', appId, 'public', 'data', 'displayStatus');
       let cancelled = false;
+      let statusFetchInFlight = false;
       const applyStatusList = (list, source = 'realtime') => {
         if (cancelled) return;
         const nextStatuses = {};
@@ -1696,6 +1714,8 @@ export default function App() {
         return restStatuses;
       };
       const fetchStatusOnce = async () => {
+        if (cancelled || statusFetchInFlight) return;
+        statusFetchInFlight = true;
         let restFallbackStarted = false;
         let restFallbackTimer = null;
         const startRestFallback = async () => {
@@ -1721,6 +1741,8 @@ export default function App() {
             }
             setSyncInfo(prev => ({ ...prev, displayStatus: 'retrying', reason: 'Display status temporarily unavailable, still retrying...' }));
           }
+        } finally {
+          statusFetchInFlight = false;
         }
       };
       const unsubStatus = USE_FIRESTORE_REALTIME
@@ -1733,7 +1755,7 @@ export default function App() {
           setSyncInfo(prev => ({ ...prev, displayStatus: err.code || 'error', reason: `Display status: ${err.message}` }));
         })
         : () => {};
-      const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_POLL_INTERVAL_MS);
+      const statusPollTimer = setInterval(fetchStatusOnce, FIRESTORE_STATUS_POLL_INTERVAL_MS);
       fetchStatusOnce();
       return () => {
         cancelled = true;
@@ -1763,7 +1785,7 @@ export default function App() {
       clearInterval(interval);
       window.removeEventListener('storage', readLocalStatuses);
     };
-  }, [user, localMode]);
+  }, [user, localMode, viewMode]);
 
   const updateGlobalState = (updatesOrFactory, options = {}) => {
     if (!user) return;
@@ -3086,13 +3108,6 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const lastFxTimestampRef = useRef(0);
   const wakeLockRef = useRef(null);
   const assetUrlCacheRef = useRef({});
-  const videoRecoveryStateRef = useRef({
-    sceneKey: '',
-    sourceUrl: '',
-    lastTime: 0,
-    lastAdvanceAt: 0,
-    lastRecoverAt: 0,
-  });
   const heartbeatSnapshotRef = useRef({
     sceneId: '',
     sceneName: '未命名場景',
@@ -3278,6 +3293,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     if (!db || localMode) return;
     const playbackCommandDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'playback');
     let cancelled = false;
+    let playbackFetchInFlight = false;
     const applyDoc = (snap) => {
       if (cancelled || !snap.exists()) return;
       applyPlaybackCommand(snap.data());
@@ -3291,6 +3307,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       return restCommand;
     };
     const fetchPlaybackCommand = async () => {
+      if (cancelled || playbackFetchInFlight) return;
+      playbackFetchInFlight = true;
       let restFallbackStarted = false;
       let restFallbackTimer = null;
       const startRestFallback = async (force = false) => {
@@ -3314,6 +3332,8 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
             console.warn("Playback command REST fallback failed:", restError);
           }
         }
+      } finally {
+        playbackFetchInFlight = false;
       }
     };
     const unsubPlaybackCommand = USE_FIRESTORE_REALTIME
@@ -3398,6 +3418,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     }
     const liveBezelDoc = doc(db, 'artifacts', appId, 'public', 'data', 'liveState', 'bezelGap');
     let cancelled = false;
+    let liveBezelFetchInFlight = false;
     const applyLiveBezel = (latest) => {
       if (cancelled || !latest || latest.type !== 'bezel-gap') return;
       setLiveBezelOverride({
@@ -3407,9 +3428,14 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
       });
     };
     const fetchLiveBezelOnce = () => {
+      if (cancelled || liveBezelFetchInFlight) return;
+      liveBezelFetchInFlight = true;
       getFirestoreRestDocument(appId, `artifacts/${appId}/public/data/liveState/bezelGap`)
         .then(applyLiveBezel)
-        .catch(error => console.warn("Live bezel REST polling failed:", error));
+        .catch(error => console.warn("Live bezel REST polling failed:", error))
+        .finally(() => {
+          liveBezelFetchInFlight = false;
+        });
     };
     const unsubLiveBezel = USE_FIRESTORE_REALTIME ? onSnapshot(liveBezelDoc, (snap) => {
       if (!snap.exists()) return;
@@ -3534,125 +3560,6 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     currentScene?.isSpanMode,
     currentScene?.spanType,
     currentScene?.screens?.[id]?.type,
-    id,
-  ]);
-
-  useEffect(() => {
-    if (!audioUnlocked || !localPlaybackActive || effectiveStandbyMode) return;
-    const isVideoScene = currentScene?.isSpanMode
-      ? currentScene?.spanType === 'video'
-      : currentScreenData?.type === 'video';
-    if (!isVideoScene) return;
-
-    const videoEl = currentScene?.isSpanMode ? spanVideoRef.current : screenVideoRef.current;
-    if (!videoEl) return;
-
-    const sceneKey = `${currentScene?.id || ''}:${currentScene?.isSpanMode ? 'span' : `screen-${id}`}`;
-    const sourceUrl = videoEl.currentSrc || videoEl.src || '';
-    const recoveryState = videoRecoveryStateRef.current;
-    recoveryState.sceneKey = sceneKey;
-    recoveryState.sourceUrl = sourceUrl;
-    recoveryState.lastTime = Number(videoEl.currentTime) || 0;
-    recoveryState.lastAdvanceAt = Date.now();
-
-    let disposed = false;
-    let recovering = false;
-
-    const markProgress = () => {
-      const currentTime = Number(videoEl.currentTime) || 0;
-      if (currentTime > recoveryState.lastTime + 0.04) {
-        recoveryState.lastTime = currentTime;
-        recoveryState.lastAdvanceAt = Date.now();
-      }
-    };
-
-    const recoverPlayback = (hard = false) => {
-      if (disposed || recovering) return;
-      const nowTs = Date.now();
-      if (nowTs - recoveryState.lastRecoverAt < VIDEO_STALL_RECOVER_COOLDOWN_MS) return;
-      recoveryState.lastRecoverAt = nowTs;
-      recovering = true;
-
-      const resumeAt = Math.max(0, (Number(videoEl.currentTime) || recoveryState.lastTime || 0) - 0.2);
-
-      const finish = () => {
-        recovering = false;
-        recoveryState.lastAdvanceAt = Date.now();
-      };
-
-      if (!hard) {
-        const playPromise = videoEl.play?.();
-        if (playPromise && typeof playPromise.finally === 'function') {
-          playPromise.finally(finish).catch(() => null);
-        } else {
-          finish();
-        }
-        return;
-      }
-
-      const onLoadedMetadata = () => {
-        videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
-        try {
-          if (Number.isFinite(resumeAt)) videoEl.currentTime = resumeAt;
-        } catch (error) {
-          console.log('Restore video currentTime failed:', error);
-        }
-        const playPromise = videoEl.play?.();
-        if (playPromise && typeof playPromise.finally === 'function') {
-          playPromise.finally(finish).catch(() => null);
-        } else {
-          finish();
-        }
-      };
-
-      videoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-      videoEl.load();
-    };
-
-    const handleWaiting = () => recoverPlayback(false);
-    const handleStalled = () => recoverPlayback(true);
-
-    videoEl.addEventListener('timeupdate', markProgress);
-    videoEl.addEventListener('playing', markProgress);
-    videoEl.addEventListener('progress', markProgress);
-    videoEl.addEventListener('waiting', handleWaiting);
-    videoEl.addEventListener('stalled', handleStalled);
-
-    const stallTimer = window.setInterval(() => {
-      if (disposed) return;
-      if (videoEl.paused || videoEl.ended || videoEl.seeking) return;
-      const currentTime = Number(videoEl.currentTime) || 0;
-      if (currentTime > recoveryState.lastTime + 0.04) {
-        recoveryState.lastTime = currentTime;
-        recoveryState.lastAdvanceAt = Date.now();
-        return;
-      }
-
-      const stalledFor = Date.now() - (recoveryState.lastAdvanceAt || Date.now());
-      if (stalledFor < VIDEO_STALL_DETECT_MS) return;
-
-      // First try a soft play() resume, then hard reload if it keeps stalling.
-      const shouldHardRecover = videoEl.readyState <= HTMLMediaElement.HAVE_CURRENT_DATA;
-      recoverPlayback(shouldHardRecover);
-    }, VIDEO_STALL_CHECK_INTERVAL_MS);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(stallTimer);
-      videoEl.removeEventListener('timeupdate', markProgress);
-      videoEl.removeEventListener('playing', markProgress);
-      videoEl.removeEventListener('progress', markProgress);
-      videoEl.removeEventListener('waiting', handleWaiting);
-      videoEl.removeEventListener('stalled', handleStalled);
-    };
-  }, [
-    audioUnlocked,
-    localPlaybackActive,
-    effectiveStandbyMode,
-    currentScene?.id,
-    currentScene?.isSpanMode,
-    currentScene?.spanType,
-    currentScreenData?.type,
     id,
   ]);
 
