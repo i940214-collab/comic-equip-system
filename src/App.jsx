@@ -132,6 +132,9 @@ const STORAGE_RESUMABLE_FALLBACK_MS = 8 * 1000;
 const STORAGE_FAST_UPLOAD_MAX_BYTES = 120 * 1024 * 1024;
 const STORAGE_DIRECT_UPLOAD_TIMEOUT_MS = 4 * 60 * 1000;
 const STORAGE_UPLOAD_MAX_TIMEOUT_MS = 30 * 60 * 1000;
+const VIDEO_STALL_CHECK_INTERVAL_MS = 1200;
+const VIDEO_STALL_DETECT_MS = 4500;
+const VIDEO_STALL_RECOVER_COOLDOWN_MS = 4000;
 const getFutureSyncTimestamp = () => Date.now() + SYNC_COMMAND_LEAD_MS;
 const getApplyDelayMs = (applyAt) => {
   const targetTs = Number(applyAt) || 0;
@@ -3083,6 +3086,13 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   const lastFxTimestampRef = useRef(0);
   const wakeLockRef = useRef(null);
   const assetUrlCacheRef = useRef({});
+  const videoRecoveryStateRef = useRef({
+    sceneKey: '',
+    sourceUrl: '',
+    lastTime: 0,
+    lastAdvanceAt: 0,
+    lastRecoverAt: 0,
+  });
   const heartbeatSnapshotRef = useRef({
     sceneId: '',
     sceneName: '未命名場景',
@@ -3327,6 +3337,12 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   ), [globalState, localPlaybackActive, standbyMode, localPlaybackStartTime, localPausedCycleElapsed]);
   const playback = useMemo(() => getPlaybackSnapshot(displayPlaybackState, now), [displayPlaybackState, now]);
   const currentScene = playback.scene || timeline[0] || DEFAULT_SCENE;
+  const currentScreenData = useMemo(
+    () => currentScene.screens?.[id] || { type: 'color', content: '#000' },
+    [currentScene, id]
+  );
+  const resolvedScreenContent = resolveAssetContentStable(currentScreenData.content || '');
+  const resolvedSpanContent = resolveAssetContentStable(currentScene.spanContent || '');
 
   useEffect(() => {
     // Standby should react immediately once the synced state arrives.
@@ -3522,6 +3538,125 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
   ]);
 
   useEffect(() => {
+    if (!audioUnlocked || !localPlaybackActive || effectiveStandbyMode) return;
+    const isVideoScene = currentScene?.isSpanMode
+      ? currentScene?.spanType === 'video'
+      : currentScreenData?.type === 'video';
+    if (!isVideoScene) return;
+
+    const videoEl = currentScene?.isSpanMode ? spanVideoRef.current : screenVideoRef.current;
+    if (!videoEl) return;
+
+    const sceneKey = `${currentScene?.id || ''}:${currentScene?.isSpanMode ? 'span' : `screen-${id}`}`;
+    const sourceUrl = videoEl.currentSrc || videoEl.src || '';
+    const recoveryState = videoRecoveryStateRef.current;
+    recoveryState.sceneKey = sceneKey;
+    recoveryState.sourceUrl = sourceUrl;
+    recoveryState.lastTime = Number(videoEl.currentTime) || 0;
+    recoveryState.lastAdvanceAt = Date.now();
+
+    let disposed = false;
+    let recovering = false;
+
+    const markProgress = () => {
+      const currentTime = Number(videoEl.currentTime) || 0;
+      if (currentTime > recoveryState.lastTime + 0.04) {
+        recoveryState.lastTime = currentTime;
+        recoveryState.lastAdvanceAt = Date.now();
+      }
+    };
+
+    const recoverPlayback = (hard = false) => {
+      if (disposed || recovering) return;
+      const nowTs = Date.now();
+      if (nowTs - recoveryState.lastRecoverAt < VIDEO_STALL_RECOVER_COOLDOWN_MS) return;
+      recoveryState.lastRecoverAt = nowTs;
+      recovering = true;
+
+      const resumeAt = Math.max(0, (Number(videoEl.currentTime) || recoveryState.lastTime || 0) - 0.2);
+
+      const finish = () => {
+        recovering = false;
+        recoveryState.lastAdvanceAt = Date.now();
+      };
+
+      if (!hard) {
+        const playPromise = videoEl.play?.();
+        if (playPromise && typeof playPromise.finally === 'function') {
+          playPromise.finally(finish).catch(() => null);
+        } else {
+          finish();
+        }
+        return;
+      }
+
+      const onLoadedMetadata = () => {
+        videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+        try {
+          if (Number.isFinite(resumeAt)) videoEl.currentTime = resumeAt;
+        } catch (error) {
+          console.log('Restore video currentTime failed:', error);
+        }
+        const playPromise = videoEl.play?.();
+        if (playPromise && typeof playPromise.finally === 'function') {
+          playPromise.finally(finish).catch(() => null);
+        } else {
+          finish();
+        }
+      };
+
+      videoEl.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      videoEl.load();
+    };
+
+    const handleWaiting = () => recoverPlayback(false);
+    const handleStalled = () => recoverPlayback(true);
+
+    videoEl.addEventListener('timeupdate', markProgress);
+    videoEl.addEventListener('playing', markProgress);
+    videoEl.addEventListener('progress', markProgress);
+    videoEl.addEventListener('waiting', handleWaiting);
+    videoEl.addEventListener('stalled', handleStalled);
+
+    const stallTimer = window.setInterval(() => {
+      if (disposed) return;
+      if (videoEl.paused || videoEl.ended || videoEl.seeking) return;
+      const currentTime = Number(videoEl.currentTime) || 0;
+      if (currentTime > recoveryState.lastTime + 0.04) {
+        recoveryState.lastTime = currentTime;
+        recoveryState.lastAdvanceAt = Date.now();
+        return;
+      }
+
+      const stalledFor = Date.now() - (recoveryState.lastAdvanceAt || Date.now());
+      if (stalledFor < VIDEO_STALL_DETECT_MS) return;
+
+      // First try a soft play() resume, then hard reload if it keeps stalling.
+      const shouldHardRecover = videoEl.readyState <= HTMLMediaElement.HAVE_CURRENT_DATA;
+      recoverPlayback(shouldHardRecover);
+    }, VIDEO_STALL_CHECK_INTERVAL_MS);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(stallTimer);
+      videoEl.removeEventListener('timeupdate', markProgress);
+      videoEl.removeEventListener('playing', markProgress);
+      videoEl.removeEventListener('progress', markProgress);
+      videoEl.removeEventListener('waiting', handleWaiting);
+      videoEl.removeEventListener('stalled', handleStalled);
+    };
+  }, [
+    audioUnlocked,
+    localPlaybackActive,
+    effectiveStandbyMode,
+    currentScene?.id,
+    currentScene?.isSpanMode,
+    currentScene?.spanType,
+    currentScreenData?.type,
+    id,
+  ]);
+
+  useEffect(() => {
     const fxAt = Number(fxTrigger?.timestamp) || 0;
     if (!fxRef.current || !audioUnlocked || fxAt <= 0 || fxAt === lastFxTimestampRef.current) return;
 
@@ -3577,9 +3712,7 @@ function DisplayScreen({ id, globalState, assets, db, appId, localMode, onExit }
     );
   }
 
-  const screenData = currentScene.screens?.[id] || { type: 'color', content: '#000' };
-  const resolvedScreenContent = resolveAssetContentStable(screenData.content || '');
-  const resolvedSpanContent = resolveAssetContentStable(currentScene.spanContent || '');
+  const screenData = currentScreenData;
   const transitionClass = TRANSITIONS.find(t => t.id === currentScene.transition)?.class || 'animate-in fade-in duration-1000';
   const liveBezelStillFresh = Boolean(
     liveBezelOverride &&
