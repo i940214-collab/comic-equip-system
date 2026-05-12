@@ -668,8 +668,17 @@ const getFirestoreRestDocument = async (projectId, documentPath) => {
 };
 
 const listFirestoreRestCollection = async (projectId, collectionPath) => {
-  const payload = await fetchFirestoreRest(projectId, collectionPath, { query: '?pageSize=200' });
-  return (payload?.documents || []).map(fromFirestoreRestDocument);
+  const docs = [];
+  let pageToken = '';
+  do {
+    const query = pageToken
+      ? `?pageSize=200&pageToken=${encodeURIComponent(pageToken)}`
+      : '?pageSize=200';
+    const payload = await fetchFirestoreRest(projectId, collectionPath, { query });
+    docs.push(...(payload?.documents || []));
+    pageToken = payload?.nextPageToken || '';
+  } while (pageToken);
+  return docs.map(fromFirestoreRestDocument);
 };
 
 const createAssetDocumentId = () => `asset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1482,6 +1491,7 @@ export default function App() {
     let lastAssetsSource = 'none';
     let lastAssetsCount = 0;
     let lastAssetsAppliedAt = 0;
+    let pendingShrink = null;
     const ASSET_SHRINK_GUARD_WINDOW_MS = 120000;
     const getAssetListSignature = (list = []) => list
       .map((asset) => `${asset?.id || ''}:${asset?.url || ''}`)
@@ -1527,6 +1537,35 @@ export default function App() {
           fromCache,
         });
         return;
+      }
+
+      // Guard against oscillating partial results (e.g. 20 -> 9 -> 20).
+      // Accept shrinking only after the same shrink signature is observed repeatedly.
+      if (list.length < lastAssetsCount) {
+        const nextSignature = getAssetListSignature(list);
+        const nowTs = Date.now();
+        const isSamePending = pendingShrink
+          && pendingShrink.signature === nextSignature
+          && (nowTs - pendingShrink.firstSeenAt) < 30000;
+        if (!isSamePending) {
+          pendingShrink = {
+            signature: nextSignature,
+            firstSeenAt: nowTs,
+            hits: 1,
+          };
+          console.warn('Hold shrinking asset list once; waiting confirmation.', {
+            previousCount: lastAssetsCount,
+            nextCount: list.length,
+            source,
+          });
+          return;
+        }
+        pendingShrink.hits += 1;
+        if (pendingShrink.hits < 2) {
+          return;
+        }
+      } else {
+        pendingShrink = null;
       }
 
       setAssets(list);
@@ -2942,6 +2981,7 @@ function AssetLibraryModal({ assets, setAssets, db, storage, appId, localMode, o
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 bg-white"
           style={{ WebkitOverflowScrolling: 'touch' }}
         >
+          <div className="mb-3 text-xs font-medium text-slate-500">目前素材：{assets.length} 筆</div>
           {assets.length === 0 ? (
             <div className="text-center py-12 text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">素材庫是空的。</div>
           ) : (
