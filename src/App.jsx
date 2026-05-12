@@ -9,6 +9,7 @@ import {
   onSnapshot,
   collection,
   getDocs,
+  getDocsFromServer,
   deleteDoc
 } from 'firebase/firestore';
 import { 
@@ -1481,6 +1482,11 @@ export default function App() {
     let lastAssetsSource = 'none';
     let lastAssetsCount = 0;
     let lastAssetsAppliedAt = 0;
+    const ASSET_SHRINK_GUARD_WINDOW_MS = 120000;
+    const getAssetListSignature = (list = []) => list
+      .map((asset) => `${asset?.id || ''}:${asset?.url || ''}`)
+      .sort()
+      .join('|');
     const applyAssetsList = (list, meta = {}) => {
       if (cancelled) return;
       const source = meta.source || 'unknown';
@@ -1491,6 +1497,7 @@ export default function App() {
       if (seq && seq < latestAppliedAssetsSeq) return;
 
       const recentRestWindow = now - lastAssetsAppliedAt < 10000;
+      const recentStableWindow = now - lastAssetsAppliedAt < ASSET_SHRINK_GUARD_WINDOW_MS;
       const wouldShrinkCacheSnapshot = (
         source === 'sdk'
         && fromCache
@@ -1500,10 +1507,24 @@ export default function App() {
         && list.length > 0
         && list.length < lastAssetsCount
       );
+      const wouldShrinkRecentStableList = (
+        source === 'sdk'
+        && lastAssetsCount > 0
+        && list.length < lastAssetsCount
+        && recentStableWindow
+      );
       if (wouldShrinkCacheSnapshot) {
         console.warn('Skipping stale cached asset snapshot that would shrink the list.', {
           previousCount: lastAssetsCount,
           nextCount: list.length,
+        });
+        return;
+      }
+      if (wouldShrinkRecentStableList && meta.verifiedByRest !== true) {
+        console.warn('Skipping unverified shrinking asset snapshot.', {
+          previousCount: lastAssetsCount,
+          nextCount: list.length,
+          fromCache,
         });
         return;
       }
@@ -1524,10 +1545,11 @@ export default function App() {
         fromCache: Boolean(snap?.metadata?.fromCache),
       });
     };
-    const fetchAssetsViaRest = async (seq) => {
+    const fetchAssetsViaRest = async (seq, options = {}) => {
+      const { apply = true } = options;
       const restAssets = await listFirestoreRestCollection(appId, `artifacts/${appId}/public/data/assets`);
-      if (restAssets.length > 0) {
-        applyAssetsList(restAssets, { source: 'rest', seq });
+      if (apply) {
+        applyAssetsList(restAssets, { source: 'rest', seq, verifiedByRest: true });
       }
       return restAssets;
     };
@@ -1537,11 +1559,31 @@ export default function App() {
       const seq = ++assetsRequestSeq;
       try {
         const snap = await withTimeout(
-          getDocs(assetsCol),
+          getDocsFromServer(assetsCol),
           SDK_READ_REST_FALLBACK_MS + 1200,
           'assets-sdk-timeout'
         );
-        applyAssetsSnap(snap, { source: 'sdk', seq });
+        const sdkList = [];
+        snap.forEach(d => sdkList.push({ id: d.id, ...d.data() }));
+        const sdkFromCache = Boolean(snap?.metadata?.fromCache);
+        const sdkWouldShrink = lastAssetsCount > 0 && sdkList.length < lastAssetsCount;
+        if (sdkWouldShrink) {
+          try {
+            const restAssets = await fetchAssetsViaRest(seq, { apply: false });
+            const sdkSignature = getAssetListSignature(sdkList);
+            const restSignature = getAssetListSignature(restAssets);
+            if (restSignature !== sdkSignature) {
+              applyAssetsList(restAssets, { source: 'rest', seq, verifiedByRest: true });
+              return;
+            }
+            applyAssetsList(sdkList, { source: 'sdk', seq, fromCache: sdkFromCache, verifiedByRest: true });
+            return;
+          } catch (restError) {
+            console.warn("Assets REST verify failed; keeping current list:", restError);
+            if (sdkFromCache) return;
+          }
+        }
+        applyAssetsList(sdkList, { source: 'sdk', seq, fromCache: sdkFromCache });
       } catch (err) {
         console.log("Assets polling error:", err);
         if (
